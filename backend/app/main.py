@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api.health import router as health_router
+from app.api.routes.auth import router as auth_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -19,8 +20,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Health Routes
 app.include_router(
     health_router,
+    prefix=settings.API_V1_PREFIX,
+)
+
+# Authentication Routes
+app.include_router(
+    auth_router,
     prefix=settings.API_V1_PREFIX,
 )
 

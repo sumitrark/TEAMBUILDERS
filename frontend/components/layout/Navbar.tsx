@@ -2,42 +2,29 @@
 
 import Link from "next/link";
 
-import Logo from "./Logo";
-import ThemeToggle from "./ThemeToggle";
-
-import { navigation } from "@/constants/navigation";
-import Container from "@/components/common/Container";
-
 export default function Navbar() {
   return (
-    <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur">
-      <Container className="flex h-20 items-center justify-between">
-        <Logo />
+    <nav className="w-full border-b bg-white">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+        <h1 className="text-2xl font-bold text-blue-600">
+          TEAMBUILDERS
+        </h1>
 
-        <nav className="hidden items-center gap-8 md:flex">
-          {navigation.map((item) => (
-            <Link
-              key={item.title}
-              href={item.href}
-              className="text-sm font-medium transition hover:text-violet-600"
-            >
-              {item.title}
-            </Link>
-          ))}
-        </nav>
+        <div className="flex items-center gap-6">
+          <Link href="/">Home</Link>
 
-        <div className="flex items-center gap-3">
-          <ThemeToggle />
-
-          <button className="hidden rounded-full border px-5 py-2 md:block">
+          <Link href="/login">
             Login
-          </button>
+          </Link>
 
-          <button className="rounded-full bg-violet-600 px-5 py-2 text-white transition hover:bg-violet-700">
-            Get Started
-          </button>
+          <Link
+            href="/register"
+            className="rounded-lg bg-blue-600 px-4 py-2 text-white"
+          >
+            Register
+          </Link>
         </div>
-      </Container>
-    </header>
+      </div>
+    </nav>
   );
 }
