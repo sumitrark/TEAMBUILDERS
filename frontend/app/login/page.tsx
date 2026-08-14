@@ -36,8 +36,13 @@ export default function LoginPage() {
 
       // Save JWT Token
       localStorage.setItem(
-        "access_token",
-        data.access_token
+       "access_token",
+        data.tokens.access_token
+      );
+
+      localStorage.setItem(
+       "refresh_token",
+        data.tokens.refresh_token
       );
 
       // Redirect to Dashboard

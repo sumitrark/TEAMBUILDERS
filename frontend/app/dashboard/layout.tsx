@@ -1,13 +1,11 @@
-import type { ReactNode } from "react";
+"use client";
 
-export default function DashboardLayout({
+import DashboardLayout from "@/components/dashboard/DashboardLayout";
+
+export default function Layout({
   children,
 }: {
-  children: ReactNode;
+  children: React.ReactNode;
 }) {
-  return (
-    <div className="min-h-screen bg-gray-100">
-      {children}
-    </div>
-  );
+  return <DashboardLayout>{children}</DashboardLayout>;
 }

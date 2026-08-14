@@ -1,13 +1,21 @@
+import WelcomeBanner from "@/components/dashboard/WelcomeBanner";
+import StatsCards from "@/components/dashboard/StatsCards";
+import HackathonSection from "@/components/dashboard/HackathonSection";
+import MyHackathons from "@/components/dashboard/MyHackathons";
+import TeamSection from "@/components/dashboard/TeamSection";
+
 export default function DashboardPage() {
   return (
-    <div className="p-10">
-      <h1 className="text-4xl font-bold">
-        Student Dashboard
-      </h1>
+    <div className="space-y-8">
+      <WelcomeBanner />
 
-      <p className="mt-4 text-gray-600">
-        Dashboard is working 🎉
-      </p>
+      <StatsCards />
+
+      <HackathonSection />
+
+      <MyHackathons />
+
+      <TeamSection />
     </div>
   );
 }

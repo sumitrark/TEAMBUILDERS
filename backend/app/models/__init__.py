@@ -1,3 +1,3 @@
-from app.models.user import User
-
-__all__ = ["User"]
+from .user import User
+from .hackathon import Hackathon
+from .participant import Participant

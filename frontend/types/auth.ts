@@ -12,11 +12,6 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface LoginResponse {
-  access_token: string;
-  token_type: string;
-}
-
 export interface User {
   id: string;
   full_name: string;
@@ -25,4 +20,14 @@ export interface User {
   course: string;
   year: number;
   role: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  refresh_token: string;
+}
+
+export interface LoginResponse {
+  user: User;
+  tokens: TokenResponse;
 }
