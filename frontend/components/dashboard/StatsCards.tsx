@@ -1,3 +1,7 @@
+"use client";
+
+import { useDashboard } from "@/hooks/useDashboard";
+
 import {
   Trophy,
   Users,
@@ -35,32 +39,34 @@ function StatCard({
 }
 
 export default function StatsCards() {
-  const stats = [
-    {
-      title: "Hackathons",
-      value: "12",
-      Icon: Trophy,
-      color: "bg-violet-600",
-    },
-    {
-      title: "Teams",
-      value: "5",
-      Icon: Users,
-      color: "bg-blue-600",
-    },
-    {
-      title: "Projects",
-      value: "8",
-      Icon: Folder,
-      color: "bg-green-600",
-    },
-    {
-      title: "Achievements",
-      value: "4",
-      Icon: Award,
-      color: "bg-orange-500",
-    },
-  ];
+const data = useDashboard();
+
+const stats = [
+  {
+    title: "Hackathons",
+    value: data.hackathons.toString(),
+    Icon: Trophy,
+    color: "bg-violet-600",
+  },
+  {
+    title: "Teams",
+    value: data.teams.toString(),
+    Icon: Users,
+    color: "bg-blue-600",
+  },
+  {
+    title: "Projects",
+    value: data.projects.toString(),
+    Icon: Folder,
+    color: "bg-green-600",
+  },
+  {
+  title: "My Registrations",
+  value: data.participants.toString(),
+  Icon: Award,
+  color: "bg-orange-500",
+  },
+];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">

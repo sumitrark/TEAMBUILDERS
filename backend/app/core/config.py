@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
 
     # Synchronous URL (Used only by Alembic)
-    SYNC_DATABASE_URL: str
+    FRONTEND_URL = "http://localhost:3000"
 
     # ==========================
     # Frontend

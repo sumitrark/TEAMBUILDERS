@@ -45,6 +45,17 @@ async def get_current_user(
 
     user = await get_user_by_id(db, user_id)
 
+    print("\n========== AUTH DEBUG ==========")
+    print("Decoded User ID:", user_id)
+    print("User Object:", user)
+
+    if user:
+        print("User Active:", user.is_active)
+        print("User Email:", user.email)
+    else:
+        print("User not found")
+    print("================================\n")
+
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

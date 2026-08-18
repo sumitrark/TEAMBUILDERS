@@ -16,9 +16,24 @@ export const login = async (
 ): Promise<LoginResponse> => {
   const response = await api.post("/auth/login", data);
 
+  // Backend returns:
+  // {
+  //   user: {...},
+  //   tokens: {
+  //     access_token: "...",
+  //     refresh_token: "...",
+  //     token_type: "bearer"
+  //   }
+  // }
+
   localStorage.setItem(
     "access_token",
-    response.data.access_token
+    response.data.tokens.access_token
+  );
+
+  localStorage.setItem(
+    "refresh_token",
+    response.data.tokens.refresh_token
   );
 
   return response.data;
@@ -31,4 +46,5 @@ export const getCurrentUser = async (): Promise<User> => {
 
 export const logout = () => {
   localStorage.removeItem("access_token");
+  localStorage.removeItem("refresh_token");
 };

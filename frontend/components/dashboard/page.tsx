@@ -1,5 +1,5 @@
 import WelcomeBanner from "@/components/dashboard/WelcomeBanner";
-import StatsGrid from "@/components/dashboard/StatsGrid";
+import StatsGrid from "@/components/dashboard/StatsCards";
 import HackathonSection from "@/components/dashboard/HackathonSection";
 import TeamSection from "@/components/dashboard/TeamSection";
 import MyHackathons from "@/components/dashboard/MyHackathons";
