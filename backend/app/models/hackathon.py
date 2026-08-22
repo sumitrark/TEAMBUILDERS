@@ -5,11 +5,12 @@ from sqlalchemy import (
     Date,
     DateTime,
     Boolean,
+    ForeignKey,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime, date
 import uuid
-
+import secrets
 from app.db.base import Base
 
 
@@ -21,46 +22,106 @@ class Hackathon(Base):
         default=uuid.uuid4,
     )
 
-    title: Mapped[str] = mapped_column(String(200))
-    description: Mapped[str] = mapped_column(Text)
+    # =====================================================
+    # OWNERSHIP
+    # =====================================================
 
-    organizer: Mapped[str] = mapped_column(String(200))
+    organizer_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
-    mode: Mapped[str] = mapped_column(String(50))
-    location: Mapped[str] = mapped_column(String(200))
+    # Kept for compatibility with existing participant UI
+    organizer: Mapped[str] = mapped_column(
+        String(200)
+    )
 
-    team_size: Mapped[int] = mapped_column(Integer)
+    # =====================================================
+    # BASIC INFORMATION
+    # =====================================================
 
-    difficulty: Mapped[str] = mapped_column(String(50))
+    title: Mapped[str] = mapped_column(
+        String(200)
+    )
 
-    prize_pool: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(
+        Text
+    )
 
-    registration_deadline: Mapped[date] = mapped_column(Date)
+    mode: Mapped[str] = mapped_column(
+        String(50)
+    )
 
-    start_date: Mapped[date] = mapped_column(Date)
+    location: Mapped[str] = mapped_column(
+        String(200)
+    )
 
-    end_date: Mapped[date] = mapped_column(Date)
+    team_size: Mapped[int] = mapped_column(
+        Integer
+    )
+
+    difficulty: Mapped[str] = mapped_column(
+        String(50)
+    )
+
+    prize_pool: Mapped[str] = mapped_column(
+        String(100)
+    )
+
+    # =====================================================
+    # DATES
+    # =====================================================
+
+    registration_deadline: Mapped[date] = mapped_column(
+        Date
+    )
+
+    start_date: Mapped[date] = mapped_column(
+        Date
+    )
+
+    end_date: Mapped[date] = mapped_column(
+        Date
+    )
+
+    # =====================================================
+    # MEDIA
+    # =====================================================
 
     banner_image: Mapped[str] = mapped_column(
         String(500),
-        default=""
+        default="",
     )
 
     website: Mapped[str] = mapped_column(
         String(500),
-        default=""
+        default="",
     )
+
+    # =====================================================
+    # STATUS
+    # =====================================================
 
     status: Mapped[str] = mapped_column(
         String(30),
-        default="Open"
+        default="Open",
     )
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,
-        default=True
+        default=True,
     )
 
+    # =====================================================
+    # TIMESTAMPS
+    # =====================================================
+    judge_invitation_code: Mapped[str] = mapped_column(
+    String(100),
+    unique=True,
+    nullable=False,
+    default=lambda: secrets.token_urlsafe(24),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,

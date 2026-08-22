@@ -12,3 +12,5 @@ from .user_settings import UserSettings
 from app.models.notification import Notification
 from app.models.help_center import HelpCenterConversation
 from app.models.achievement import Achievement
+from app.models.judge import Judge
+from app.models.evaluation import Evaluation

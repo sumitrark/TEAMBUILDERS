@@ -27,9 +27,7 @@ import {
 } from "@/services/notification";
 
 
-function getNotificationIcon(
-  type: string
-) {
+function getNotificationIcon(type: string) {
   switch (type) {
     case "team_invitation":
       return <Mail size={18} />;
@@ -52,8 +50,43 @@ function getNotificationIcon(
 }
 
 
+/*
+ * Convert backend UTC timestamp into
+ * relative local time.
+ *
+ * Examples:
+ * Just now
+ * 2m ago
+ * 45m ago
+ * 3h ago
+ * 2d ago
+ */
 function formatTime(dateString: string) {
-  const date = new Date(dateString);
+  if (!dateString) {
+    return "";
+  }
+
+  let normalizedDateString = dateString;
+
+  /*
+   * Safety handling:
+   *
+   * If an old database record contains a timestamp
+   * without timezone information, treat it as UTC.
+   *
+   * New records should already contain +00:00 or Z.
+   */
+  if (
+    !dateString.endsWith("Z") &&
+    !/[+-]\d{2}:\d{2}$/.test(dateString)
+  ) {
+    normalizedDateString =
+      `${dateString}Z`;
+  }
+
+  const date = new Date(
+    normalizedDateString
+  );
 
   if (Number.isNaN(date.getTime())) {
     return "";
@@ -64,13 +97,17 @@ function formatTime(dateString: string) {
   const difference =
     now.getTime() - date.getTime();
 
+  /*
+   * Protect against tiny clock differences
+   * or future timestamps.
+   */
+  if (difference <= 60 * 1000) {
+    return "Just now";
+  }
+
   const minutes = Math.floor(
     difference / (1000 * 60)
   );
-
-  if (minutes < 1) {
-    return "Just now";
-  }
 
   if (minutes < 60) {
     return `${minutes}m ago`;
@@ -97,6 +134,7 @@ function formatTime(dateString: string) {
     {
       day: "numeric",
       month: "short",
+      year: "numeric",
     }
   );
 }
@@ -140,12 +178,6 @@ export default function NotificationBell() {
       setUnreadCount(count);
 
     } catch (error: any) {
-      /*
-       * A 401 simply means the user is not
-       * authenticated. Don't show an error
-       * popup from the notification bell.
-       */
-
       if (
         error?.response?.status !== 401
       ) {
@@ -163,11 +195,6 @@ export default function NotificationBell() {
 
   useEffect(() => {
     loadNotifications();
-
-    /*
-     * Refresh notification count every
-     * 30 seconds while dashboard is open.
-     */
 
     const interval =
       setInterval(

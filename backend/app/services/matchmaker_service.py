@@ -72,14 +72,11 @@ def calculate_match(
     # -----------------------------------------------------
 
     if current_skills:
-
         skill_score = (
             len(matched_skills)
             / len(current_skills)
         )
-
     else:
-
         skill_score = 0.0
 
     # -----------------------------------------------------
@@ -87,14 +84,11 @@ def calculate_match(
     # -----------------------------------------------------
 
     if current_roles:
-
         role_score = (
             len(matched_roles)
             / len(current_roles)
         )
-
     else:
-
         role_score = 0.0
 
     # -----------------------------------------------------
@@ -109,7 +103,6 @@ def calculate_match(
         and current_user.course.lower()
         == candidate.course.lower()
     ):
-
         course_score = 1.0
 
     # -----------------------------------------------------
@@ -163,10 +156,18 @@ async def get_recommendations(
     limit: int = 10,
 ):
 
+    # -----------------------------------------------------
+    # ONLY STUDENTS CAN BE RECOMMENDED
+    #
+    # Organizers and judges must never appear as
+    # potential teammates.
+    # -----------------------------------------------------
+
     result = await db.execute(
         select(User).where(
             User.id != current_user.id,
             User.is_active == True,
+            User.role == "student",
         )
     )
 
@@ -190,32 +191,50 @@ async def get_recommendations(
                 "user_id": candidate.id,
                 "full_name": candidate.full_name,
                 "username": candidate.username,
+
                 "college": candidate.college,
                 "course": candidate.course,
                 "year": candidate.year,
+
                 "bio": candidate.bio,
-                "skills": candidate.skills or [],
+
+                "skills": (
+                    candidate.skills
+                    or []
+                ),
+
                 "preferred_roles": (
                     candidate.preferred_roles
                     or []
                 ),
+
                 "match_score": score,
-                "matched_skills": matched_skills,
-                "matched_roles": matched_roles,
+
+                "matched_skills": (
+                    matched_skills
+                ),
+
+                "matched_roles": (
+                    matched_roles
+                ),
             }
         )
+
+    # -----------------------------------------------------
+    # HIGHEST MATCH FIRST
+    # -----------------------------------------------------
 
     recommendations.sort(
         key=lambda item: item["match_score"],
         reverse=True,
     )
 
-    # =====================================================
-    # Award AI_EXPLORER
+    # -----------------------------------------------------
+    # AWARD AI EXPLORER
     #
-    # Only after recommendations have been successfully
+    # Only after recommendations are successfully
     # calculated.
-    # =====================================================
+    # -----------------------------------------------------
 
     await award_achievement(
         db=db,

@@ -2,15 +2,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.dependencies.current_user import (
-    get_current_user,
-)
-from app.schemas.matchmaker import (
-    MatchmakerResponse,
-)
+from app.dependencies.student import get_current_student
+
+from app.schemas.matchmaker import MatchmakerResponse
+
 from app.services.matchmaker_service import (
     get_recommendations,
 )
+
 
 router = APIRouter(
     prefix="/matchmaker",
@@ -29,7 +28,7 @@ async def recommendations(
         le=50,
     ),
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(get_current_student),
 ):
     results = await get_recommendations(
         db=db,
@@ -38,5 +37,5 @@ async def recommendations(
     )
 
     return {
-        "recommendations": results
+        "recommendations": results,
     }

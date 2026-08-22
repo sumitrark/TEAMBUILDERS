@@ -18,6 +18,7 @@ from app.schemas.team_hackathon import (
 from app.crud.team import (
     create_team,
     get_my_teams,
+    get_team,
     update_team,
     delete_team,
     register_team_for_hackathon,
@@ -145,6 +146,33 @@ async def register_team(
         )
 
     return result
+
+
+# =========================================================
+# GET SINGLE TEAM
+# =========================================================
+
+@router.get(
+    "/{team_id}",
+    response_model=TeamResponse,
+)
+async def get_single_team(
+    team_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    team = await get_team(
+        db,
+        team_id,
+    )
+
+    if team is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Team not found",
+        )
+
+    return team
 
 
 # =========================================================

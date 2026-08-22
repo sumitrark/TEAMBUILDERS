@@ -14,6 +14,7 @@ from app.api.routes.hackathon import router as hackathon_router
 from app.api.routes.team_invitation import (
     router as team_invitation_router,
 )
+from app.api.routes.organizer import router as organizer_router
 from app.api.routes.achievement import router as achievement_router
 from app.api.routes.help_center import (
     router as help_center_router,
@@ -28,6 +29,9 @@ from app.api.routes.notification import (
     router as notification_router,
 )
 from app.api.routes.user import router as user_router
+from app.api.routes.evaluation import router as evaluation_router
+
+from app.api.routes.judge import router as judge_router
 print("✅ LOADED app/main.py WITH PARTICIPANT ROUTER")
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -139,6 +143,18 @@ app.include_router(
     achievement_router,
     prefix="/api/v1",
 )
+
+app.include_router(
+    organizer_router,
+    prefix="/api/v1",
+)
+
+
+app.include_router(
+    evaluation_router,
+    prefix="/api/v1",
+)
+app.include_router(judge_router, prefix="/api/v1")
 
 for route in app.router.routes:
     if hasattr(route, "path"):

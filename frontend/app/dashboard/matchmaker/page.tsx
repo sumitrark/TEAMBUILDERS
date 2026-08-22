@@ -1,28 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
-interface Team {
-  id: string;
-  name: string;
-  max_members: number;
-  owner_id: string;
-}
+import { getMatchmakerRecommendations } from "@/services/matchmaker";
+import { api } from "@/lib/api";
 
-interface TeamWithCount extends Team {
-  member_count: number;
-}
-
-interface Recommendation {
+interface MatchRecommendation {
   user_id: string;
   full_name: string;
-  username: string | null;
-  college: string;
-  course: string;
-  year: number;
-  bio: string | null;
+  username?: string | null;
+  college?: string | null;
+  course?: string | null;
+  year?: number | null;
+  bio?: string | null;
   skills: string[];
   preferred_roles: string[];
   match_score: number;
@@ -30,93 +21,41 @@ interface Recommendation {
   matched_roles: string[];
 }
 
-interface MatchmakerResponse {
-  recommendations: Recommendation[];
+interface Team {
+  id: string;
+  name: string;
+  member_count: number;
+  max_members: number;
 }
 
 export default function MatchmakerPage() {
   const router = useRouter();
 
   const [recommendations, setRecommendations] = useState<
-    Recommendation[]
+    MatchRecommendation[]
   >([]);
 
+  const [teams, setTeams] = useState<Team[]>([]);
+
   const [loading, setLoading] = useState(true);
+  const [loadingTeams, setLoadingTeams] = useState(false);
+
   const [error, setError] = useState("");
 
-  // Invitation states
-  const [teams, setTeams] = useState<TeamWithCount[]>([]);
   const [selectedUser, setSelectedUser] =
-    useState<Recommendation | null>(null);
+    useState<MatchRecommendation | null>(null);
 
-  const [selectedTeam, setSelectedTeam] = useState("");
+  const [selectedTeam, setSelectedTeam] =
+    useState("");
 
-  const [loadingTeams, setLoadingTeams] = useState(false);
-  const [sendingInvite, setSendingInvite] = useState(false);
+  const [sendingInvite, setSendingInvite] =
+    useState(false);
 
-  const [inviteMessage, setInviteMessage] = useState("");
-  const [inviteError, setInviteError] = useState("");
+  const [inviteError, setInviteError] =
+    useState("");
 
-  // =========================================================
-  // LOAD TEAMS
-  // =========================================================
-
-  async function loadTeams() {
-    try {
-      setLoadingTeams(true);
-      setInviteError("");
-
-      const response = await api.get("/teams/my");
-
-      const myTeams: Team[] = response.data || [];
-
-      const teamsWithCounts = await Promise.all(
-        myTeams.map(async (team) => {
-          try {
-            const membersResponse = await api.get(
-              `/team-members/${team.id}`
-            );
-
-            return {
-              ...team,
-              member_count:
-                membersResponse.data?.length || 0,
-            };
-          } catch (err) {
-            console.error(
-              `Failed to load members for team ${team.id}`,
-              err
-            );
-
-            return {
-              ...team,
-              member_count: 0,
-            };
-          }
-        })
-      );
-
-      setTeams(teamsWithCounts);
-    } catch (err: any) {
-      console.error(
-        "Failed to load teams:",
-        err
-      );
-
-      if (err.response?.status === 401) {
-        setInviteError(
-          "Your session has expired. Please login again."
-        );
-      } else {
-        setInviteError(
-          err.response?.data?.detail ||
-            "Failed to load your teams."
-        );
-      }
-    } finally {
-      setLoadingTeams(false);
-    }
-  }
+  const [inviteMessage, setInviteMessage] =
+    useState("");
 
   // =========================================================
   // LOAD RECOMMENDATIONS
@@ -127,28 +66,28 @@ export default function MatchmakerPage() {
       setLoading(true);
       setError("");
 
-      const response =
-        await api.get<MatchmakerResponse>(
-          "/matchmaker/recommendations?limit=20"
-        );
+      const data =
+        await getMatchmakerRecommendations(10);
 
-      setRecommendations(
-        response.data.recommendations || []
-      );
+      setRecommendations(data);
     } catch (err: any) {
       console.error(
         "Failed to load matchmaker recommendations:",
         err
       );
 
-      if (err.response?.status === 401) {
+      if (err?.response?.status === 401) {
         setError(
           "Your session has expired. Please login again."
         );
+      } else if (err?.response?.status === 403) {
+        setError(
+          "The Matchmaker is available only for student accounts."
+        );
       } else {
         setError(
-          err.response?.data?.detail ||
-            "Unable to load teammate recommendations."
+          err?.response?.data?.detail ||
+            "Unable to load Matchmaker recommendations."
         );
       }
     } finally {
@@ -156,28 +95,52 @@ export default function MatchmakerPage() {
     }
   }
 
+  // =========================================================
+  // LOAD TEAMS
+  // =========================================================
+
+  async function loadTeams() {
+    try {
+      setLoadingTeams(true);
+
+      const response =
+        await api.get<Team[]>("/teams/my");
+
+      setTeams(response.data);
+    } catch (err) {
+      console.error(
+        "Failed to load teams:",
+        err
+      );
+
+      setTeams([]);
+    } finally {
+      setLoadingTeams(false);
+    }
+  }
+
+  // =========================================================
+  // INITIAL LOAD
+  // =========================================================
+
   useEffect(() => {
     loadRecommendations();
   }, []);
 
   // =========================================================
-  // OPEN INVITE MODAL
+  // INVITE MODAL
   // =========================================================
 
-  async function openInviteModal(
-    user: Recommendation
+  function openInviteModal(
+    person: MatchRecommendation
   ) {
-    setSelectedUser(user);
+    setSelectedUser(person);
     setSelectedTeam("");
-    setInviteMessage("");
     setInviteError("");
+    setInviteMessage("");
 
-    await loadTeams();
+    loadTeams();
   }
-
-  // =========================================================
-  // CLOSE INVITE MODAL
-  // =========================================================
 
   function closeInviteModal() {
     if (sendingInvite) {
@@ -186,8 +149,8 @@ export default function MatchmakerPage() {
 
     setSelectedUser(null);
     setSelectedTeam("");
-    setInviteMessage("");
     setInviteError("");
+    setInviteMessage("");
   }
 
   // =========================================================
@@ -222,7 +185,6 @@ export default function MatchmakerPage() {
         `Invitation sent to ${selectedUser.full_name}.`
       );
 
-      // Close modal after a short success message
       setTimeout(() => {
         setSelectedUser(null);
         setSelectedTeam("");
@@ -234,13 +196,13 @@ export default function MatchmakerPage() {
         err
       );
 
-      if (err.response?.status === 401) {
+      if (err?.response?.status === 401) {
         setInviteError(
           "Your session has expired. Please login again."
         );
       } else {
         setInviteError(
-          err.response?.data?.detail ||
+          err?.response?.data?.detail ||
             "Failed to send invitation."
         );
       }
@@ -284,7 +246,7 @@ export default function MatchmakerPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
+      <main className="min-h-screen bg-slate-50 p-6">
         <div className="mx-auto max-w-7xl">
 
           <div className="h-10 w-72 animate-pulse rounded-lg bg-slate-200" />
@@ -292,7 +254,6 @@ export default function MatchmakerPage() {
           <div className="mt-3 h-5 w-96 animate-pulse rounded bg-slate-200" />
 
           <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-
             {[1, 2, 3, 4, 5, 6].map(
               (item) => (
                 <div
@@ -301,10 +262,10 @@ export default function MatchmakerPage() {
                 />
               )
             )}
-
           </div>
+
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -314,7 +275,7 @@ export default function MatchmakerPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
+      <main className="min-h-screen bg-slate-50 p-6">
         <div className="mx-auto max-w-2xl">
 
           <div className="rounded-3xl border border-red-200 bg-red-50 p-8 text-center">
@@ -342,18 +303,18 @@ export default function MatchmakerPage() {
           </div>
 
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-slate-50">
 
       {/* =====================================================
           HEADER
       ====================================================== */}
 
-      <div className="border-b bg-white">
+      <header className="border-b bg-white">
 
         <div className="mx-auto max-w-7xl px-6 py-8">
 
@@ -388,15 +349,15 @@ export default function MatchmakerPage() {
 
         </div>
 
-      </div>
+      </header>
 
       {/* =====================================================
           CONTENT
       ====================================================== */}
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <section className="mx-auto max-w-7xl px-6 py-8">
 
-        {/* Matchmaker explanation */}
+        {/* INFO BANNER */}
 
         <div className="mb-8 rounded-3xl bg-gradient-to-r from-violet-600 to-indigo-600 p-7 text-white shadow-lg">
 
@@ -453,8 +414,8 @@ export default function MatchmakerPage() {
             </h2>
 
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-              Try adding more skills and preferred
-              roles to your profile so the Matchmaker
+              Add more skills and preferred roles
+              to your profile so the Matchmaker
               can find better recommendations.
             </p>
 
@@ -475,7 +436,7 @@ export default function MatchmakerPage() {
         ) : (
 
           /* =================================================
-             RECOMMENDATION GRID
+             RECOMMENDATIONS
           ================================================== */
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -483,12 +444,12 @@ export default function MatchmakerPage() {
             {recommendations.map(
               (person, index) => (
 
-                <div
+                <article
                   key={person.user_id}
                   className="group rounded-3xl border bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
                 >
 
-                  {/* Rank + Match */}
+                  {/* RANK */}
 
                   <div className="flex items-center justify-between">
 
@@ -509,11 +470,11 @@ export default function MatchmakerPage() {
 
                   </div>
 
-                  {/* Profile */}
+                  {/* PROFILE */}
 
                   <div className="mt-6 flex items-center gap-4">
 
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-lg font-bold text-white">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-lg font-bold text-white">
                       {getInitials(
                         person.full_name
                       )}
@@ -535,37 +496,40 @@ export default function MatchmakerPage() {
 
                   </div>
 
-                  {/* Basic Information */}
+                  {/* BASIC INFORMATION */}
 
                   <div className="mt-5 space-y-2">
 
-                    <div className="flex items-start gap-2 text-sm text-slate-600">
-                      <span>🎓</span>
+                    {person.course && (
+                      <div className="flex items-start gap-2 text-sm text-slate-600">
+                        <span>🎓</span>
+                        <span className="line-clamp-1">
+                          {person.course}
+                        </span>
+                      </div>
+                    )}
 
-                      <span className="line-clamp-1">
-                        {person.course}
-                      </span>
-                    </div>
+                    {person.college && (
+                      <div className="flex items-start gap-2 text-sm text-slate-600">
+                        <span>🏫</span>
+                        <span className="line-clamp-1">
+                          {person.college}
+                        </span>
+                      </div>
+                    )}
 
-                    <div className="flex items-start gap-2 text-sm text-slate-600">
-                      <span>🏫</span>
-
-                      <span className="line-clamp-1">
-                        {person.college}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <span>📚</span>
-
-                      <span>
-                        Year {person.year}
-                      </span>
-                    </div>
+                    {person.year && (
+                      <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <span>📚</span>
+                        <span>
+                          Year {person.year}
+                        </span>
+                      </div>
+                    )}
 
                   </div>
 
-                  {/* Bio */}
+                  {/* BIO */}
 
                   {person.bio && (
                     <p className="mt-5 line-clamp-2 text-sm leading-5 text-slate-500">
@@ -573,7 +537,7 @@ export default function MatchmakerPage() {
                     </p>
                   )}
 
-                  {/* Matched Skills */}
+                  {/* MATCHED SKILLS */}
 
                   <div className="mt-5">
 
@@ -581,23 +545,20 @@ export default function MatchmakerPage() {
                       Matched Skills
                     </p>
 
-                    {person.matched_skills &&
-                    person.matched_skills.length > 0 ? (
+                    {person.matched_skills?.length > 0 ? (
 
                       <div className="flex flex-wrap gap-2">
 
                         {person.matched_skills
                           .slice(0, 5)
-                          .map(
-                            (skill) => (
-                              <span
-                                key={skill}
-                                className="rounded-lg bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700"
-                              >
-                                ✓ {skill}
-                              </span>
-                            )
-                          )}
+                          .map((skill) => (
+                            <span
+                              key={skill}
+                              className="rounded-lg bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700"
+                            >
+                              ✓ {skill}
+                            </span>
+                          ))}
 
                       </div>
 
@@ -611,7 +572,7 @@ export default function MatchmakerPage() {
 
                   </div>
 
-                  {/* Roles */}
+                  {/* PREFERRED ROLES */}
 
                   <div className="mt-4">
 
@@ -623,22 +584,20 @@ export default function MatchmakerPage() {
 
                       {(person.preferred_roles || [])
                         .slice(0, 3)
-                        .map(
-                          (role) => (
-                            <span
-                              key={role}
-                              className="rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700"
-                            >
-                              {role}
-                            </span>
-                          )
-                        )}
+                        .map((role) => (
+                          <span
+                            key={role}
+                            className="rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700"
+                          >
+                            {role}
+                          </span>
+                        ))}
 
                     </div>
 
                   </div>
 
-                  {/* Match Breakdown */}
+                  {/* SCORE BAR */}
 
                   <div className="mt-5 rounded-2xl bg-slate-50 p-4">
 
@@ -676,7 +635,7 @@ export default function MatchmakerPage() {
 
                   </div>
 
-                  {/* Actions */}
+                  {/* ACTIONS */}
 
                   <div className="mt-6 flex gap-3">
 
@@ -704,7 +663,7 @@ export default function MatchmakerPage() {
 
                   </div>
 
-                </div>
+                </article>
 
               )
             )}
@@ -713,10 +672,10 @@ export default function MatchmakerPage() {
 
         )}
 
-      </div>
+      </section>
 
       {/* =====================================================
-          INVITE MODAL
+          INVITATION MODAL
       ====================================================== */}
 
       {selectedUser && (
@@ -735,13 +694,13 @@ export default function MatchmakerPage() {
 
           <div className="w-full max-w-lg rounded-3xl bg-white p-7 shadow-2xl">
 
-            {/* Modal Header */}
+            {/* HEADER */}
 
             <div className="flex items-start justify-between">
 
               <div className="flex items-center gap-4">
 
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-lg font-bold text-white">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-lg font-bold text-white">
                   {getInitials(
                     selectedUser.full_name
                   )}
@@ -755,8 +714,7 @@ export default function MatchmakerPage() {
                   </h2>
 
                   <p className="mt-1 text-sm text-slate-500">
-                    Choose a team to send the
-                    invitation to.
+                    Choose one of your teams.
                   </p>
 
                 </div>
@@ -774,7 +732,7 @@ export default function MatchmakerPage() {
 
             </div>
 
-            {/* Teams */}
+            {/* TEAMS */}
 
             <div className="mt-7">
 
@@ -807,8 +765,8 @@ export default function MatchmakerPage() {
                   </p>
 
                   <p className="mt-1 text-sm text-slate-500">
-                    Create a team first before
-                    inviting teammates.
+                    Create a team before inviting
+                    another student.
                   </p>
 
                   <button
@@ -839,7 +797,6 @@ export default function MatchmakerPage() {
                       selectedTeam === team.id;
 
                     return (
-
                       <button
                         key={team.id}
                         type="button"
@@ -896,7 +853,6 @@ export default function MatchmakerPage() {
                         </div>
 
                       </button>
-
                     );
                   })}
 
@@ -906,30 +862,25 @@ export default function MatchmakerPage() {
 
             </div>
 
-            {/* Error */}
+            {/* ERROR */}
 
             {inviteError && (
-
               <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {inviteError}
               </div>
-
             )}
 
-            {/* Success */}
+            {/* SUCCESS */}
 
             {inviteMessage && (
-
               <div className="mt-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
                 ✓ {inviteMessage}
               </div>
-
             )}
 
-            {/* Send Button */}
+            {/* SEND */}
 
             {teams.length > 0 && (
-
               <button
                 type="button"
                 disabled={
@@ -940,21 +891,17 @@ export default function MatchmakerPage() {
                 onClick={sendInvitation}
                 className="mt-6 flex w-full items-center justify-center rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-
                 {sendingInvite
                   ? "Sending Invitation..."
                   : "Send Invitation"}
-
               </button>
-
             )}
 
           </div>
 
         </div>
-
       )}
 
-    </div>
+    </main>
   );
 }

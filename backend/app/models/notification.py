@@ -1,5 +1,5 @@
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
@@ -50,8 +50,9 @@ class Notification(Base):
         nullable=False,
     )
 
+    # Always store timezone-aware UTC timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
