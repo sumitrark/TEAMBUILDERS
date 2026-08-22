@@ -1,5 +1,5 @@
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -231,7 +231,7 @@ async def respond_to_invitation(
     if not accept:
 
         invitation.status = "declined"
-        invitation.responded_at = datetime.utcnow()
+        invitation.responded_at = datetime.now(timezone.utc)
 
         await db.flush()
 
@@ -320,7 +320,7 @@ async def respond_to_invitation(
     # -----------------------------------------------------
 
     invitation.status = "accepted"
-    invitation.responded_at = datetime.utcnow()
+    invitation.responded_at = datetime.now(timezone.utc)
 
     member = TeamMember(
         team_id=team.id,
