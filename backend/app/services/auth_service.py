@@ -1,15 +1,28 @@
+from datetime import datetime, timezone
+from uuid import UUID
+
+from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    decode_refresh_token,
     hash_password,
+    hash_token,
     verify_password,
 )
 
 from app.crud.user import (
     create_user,
     get_user_by_email,
+    get_user_by_id,
+)
+from app.crud.refresh_token import (
+    create_refresh_token_record,
+    get_refresh_token_by_hash,
+    revoke_all_refresh_tokens_for_user,
+    revoke_refresh_token,
 )
 
 from app.models.user import User
@@ -189,20 +202,134 @@ async def authenticate_user(
 # GENERATE TOKENS
 # =========================================================
 
-def generate_tokens(
+async def generate_tokens(
+    db: AsyncSession,
     user: User,
 ) -> dict:
 
     subject = str(user.id)
 
+    access_token = create_access_token(subject)
+    refresh_token, refresh_expires_at = create_refresh_token(subject)
+
+    await create_refresh_token_record(
+        db,
+        user_id=user.id,
+        token_hash=hash_token(refresh_token),
+        expires_at=refresh_expires_at,
+    )
+
     return {
-        "access_token": create_access_token(
-            subject
-        ),
-
-        "refresh_token": create_refresh_token(
-            subject
-        ),
-
+        "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
     }
+
+
+# =========================================================
+# REFRESH ACCESS TOKEN (ROTATION)
+# =========================================================
+
+async def refresh_access_token(
+    db: AsyncSession,
+    refresh_token: str,
+) -> dict:
+
+    try:
+        payload = decode_refresh_token(refresh_token)
+
+    except JWTError as exc:
+        raise ValueError(
+            "Invalid or expired refresh token"
+        ) from exc
+
+    subject = payload.get("sub")
+
+    if not subject:
+        raise ValueError("Invalid refresh token")
+
+    token_hash = hash_token(refresh_token)
+
+    record = await get_refresh_token_by_hash(db, token_hash)
+
+    if not record:
+        raise ValueError("Refresh token not recognized")
+
+    if record.revoked_at is not None:
+        # This exact token was already rotated away (or logged out)
+        # once before, and is being presented again. That only
+        # happens if it was stolen and copied - a legitimate client
+        # always moves on to the newest token after rotation. Treat
+        # this as a compromise signal and kill every active session
+        # for the user, not just this one token.
+        await revoke_all_refresh_tokens_for_user(db, record.user_id)
+
+        raise ValueError(
+            "Refresh token has already been used. "
+            "All sessions have been signed out for safety."
+        )
+
+    expires_at = record.expires_at
+
+    if expires_at.tzinfo is None:
+        # Defensive: some DB backends/drivers can return naive datetimes
+        # even from a timezone-aware column. Every value we ever write
+        # to this column is UTC, so treat naive as UTC rather than risk
+        # a crash or a wrong-timezone comparison.
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at < datetime.now(timezone.utc):
+        raise ValueError("Refresh token has expired")
+
+    user = await get_user_by_id(db, record.user_id)
+
+    if not user or not user.is_active:
+        raise ValueError("User not found or inactive")
+
+    new_access_token = create_access_token(subject)
+    new_refresh_token, new_expires_at = create_refresh_token(subject)
+    new_token_hash = hash_token(new_refresh_token)
+
+    await create_refresh_token_record(
+        db,
+        user_id=user.id,
+        token_hash=new_token_hash,
+        expires_at=new_expires_at,
+    )
+
+    await revoke_refresh_token(
+        db,
+        record,
+        replaced_by_token_hash=new_token_hash,
+    )
+
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+    }
+
+
+# =========================================================
+# LOGOUT
+# =========================================================
+
+async def logout(
+    db: AsyncSession,
+    refresh_token: str,
+) -> None:
+
+    token_hash = hash_token(refresh_token)
+
+    record = await get_refresh_token_by_hash(db, token_hash)
+
+    if record and record.revoked_at is None:
+        await revoke_refresh_token(db, record)
+
+
+async def logout_all(
+    db: AsyncSession,
+    user_id: UUID,
+) -> None:
+
+    await revoke_all_refresh_tokens_for_user(db, user_id)

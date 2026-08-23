@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.hackathon import Hackathon
 from app.models.participant import Participant
 from app.models.team import Team
+from app.models.refresh_token import RefreshToken
 
 
 config = context.config

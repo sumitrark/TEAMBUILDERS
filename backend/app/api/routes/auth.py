@@ -5,6 +5,8 @@ from app.dependencies.current_user import get_current_user
 from app.db.database import get_db
 from app.schemas.user import (
     LoginResponse,
+    LogoutRequest,
+    RefreshRequest,
     TokenResponse,
     UserLogin,
     UserRegister,
@@ -13,6 +15,9 @@ from app.schemas.user import (
 from app.services.auth_service import (
     authenticate_user,
     generate_tokens,
+    logout,
+    logout_all,
+    refresh_access_token,
     register_user,
 )
 
@@ -69,9 +74,54 @@ async def login(
             detail=str(exc),
         ) from exc
 
-    tokens = generate_tokens(user)
+    tokens = await generate_tokens(db, user)
 
     return {
         "user": user,
         "tokens": TokenResponse(**tokens),
     }
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+)
+async def refresh(
+    payload: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        tokens = await refresh_access_token(
+            db,
+            payload.refresh_token,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+
+    return TokenResponse(**tokens)
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def logout_route(
+    payload: LogoutRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    await logout(db, payload.refresh_token)
+
+
+@router.post(
+    "/logout-all",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def logout_all_route(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await logout_all(db, current_user.id)

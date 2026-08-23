@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
 
+    # Optional dedicated signing secret for refresh tokens. Falls back to
+    # SECRET_KEY when not provided, so existing .env files keep working
+    # without changes. Set this in production to limit blast radius if the
+    # access-token secret is ever compromised.
+    JWT_REFRESH_SECRET: str | None = None
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
     # ==========================
     # Database
     # ==========================
