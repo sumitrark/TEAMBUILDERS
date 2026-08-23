@@ -274,6 +274,11 @@ class UserResponse(BaseModel):
 
     is_active: bool
 
+    # Phone verification
+    mobile_number: str | None = None
+
+    phone_verified: bool = False
+
     # Profile
     bio: str | None = None
 

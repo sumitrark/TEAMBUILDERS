@@ -85,6 +85,22 @@ async def get_project(
     return result.scalar_one_or_none()
 
 
+async def get_project_by_id(
+    db: AsyncSession,
+    project_id: UUID,
+):
+    """
+    Unscoped lookup - for judges/organizers/AI features that need to
+    read a project regardless of who owns it. Never use this for
+    write operations; those must stay owner-scoped via get_project().
+    """
+    result = await db.execute(
+        select(Project).where(Project.id == project_id)
+    )
+
+    return result.scalar_one_or_none()
+
+
 # =========================================================
 # UPDATE PROJECT
 # =========================================================

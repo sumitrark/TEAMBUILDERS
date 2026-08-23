@@ -16,6 +16,7 @@ from app.schemas.evaluation import (
     EvaluationCreate,
     EvaluationResponse,
 )
+from app.schemas.ai_evaluation import AiEvaluationResponse
 
 from app.crud.evaluation import (
     create_evaluation,
@@ -23,6 +24,9 @@ from app.crud.evaluation import (
     get_project_evaluations,
     get_project_score,
 )
+from app.crud.ai_evaluation import get_ai_evaluation_by_project
+
+from app.services.ai_evaluation_service import generate_ai_evaluation
 
 
 router = APIRouter(
@@ -148,3 +152,75 @@ async def project_score(
         db=db,
         project_id=project_id,
     )
+
+
+# =========================================================
+# AI-ASSISTED EVALUATION
+#
+# Advisory only - never authoritative. The human Evaluation
+# table above remains the score that counts; this is a
+# separate, clearly-labeled AI read to help a judge get
+# started, restricted to judges/organizers.
+# =========================================================
+
+@router.post(
+    "/ai/{project_id}",
+    response_model=AiEvaluationResponse,
+)
+async def generate_ai_evaluation_endpoint(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if current_user.role not in ("judge", "organizer"):
+        raise HTTPException(
+            status_code=403,
+            detail="Only judges and organizers can request an AI evaluation",
+        )
+
+    try:
+        return await generate_ai_evaluation(
+            db=db,
+            project_id=project_id,
+            requested_by_user_id=current_user.id,
+        )
+
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    except ValueError as exc:
+        message = str(exc)
+
+        status_code = (
+            status.HTTP_429_TOO_MANY_REQUESTS
+            if "limit" in message.lower()
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+        raise HTTPException(
+            status_code=status_code,
+            detail=message,
+        ) from exc
+
+
+@router.get(
+    "/ai/{project_id}",
+    response_model=AiEvaluationResponse,
+)
+async def get_ai_evaluation_endpoint(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await get_ai_evaluation_by_project(db, project_id)
+
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail="No AI evaluation has been generated for this project yet",
+        )
+
+    return result

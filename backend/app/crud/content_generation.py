@@ -1,6 +1,8 @@
+from datetime import datetime, timezone
+
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content_generation import ContentGeneration
@@ -52,3 +54,21 @@ async def get_user_content_generations(
     )
 
     return result.scalars().all()
+
+
+async def count_user_content_generations_today(
+    db: AsyncSession,
+    user_id: UUID,
+) -> int:
+    start_of_day = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    result = await db.execute(
+        select(func.count()).select_from(ContentGeneration).where(
+            ContentGeneration.user_id == user_id,
+            ContentGeneration.created_at >= start_of_day,
+        )
+    )
+
+    return result.scalar_one()

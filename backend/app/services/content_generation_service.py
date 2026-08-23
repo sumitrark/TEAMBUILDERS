@@ -2,70 +2,87 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+
 from app.crud.content_generation import (
     create_content_generation,
+    count_user_content_generations_today,
 )
+from app.crud.project import get_project_by_id
 
 from app.services.achievement_service import (
     award_achievement,
 )
+from app.services.ai_client import (
+    AIServiceError,
+    AIServiceNotConfiguredError,
+    generate_text,
+)
+from app.services.github_context import fetch_github_readme
 
 
 # =========================================================
-# GENERATE CONTENT
+# PROMPT BUILDING
 # =========================================================
 
-def generate_content(
+def _build_prompt(
     platform: str,
     content_type: str,
     tone: str,
     prompt: str | None,
-) -> str:
+    project_context: str | None,
+    github_readme: str | None,
+) -> tuple[str, str]:
 
-    extra = ""
+    system_prompt = (
+        "You are the AI Content Studio for TeamBuilders AI, a "
+        "hackathon platform. You write polished, specific, non-generic "
+        "content for students and organizers to share their real "
+        "hackathon projects. Ground everything in the actual project "
+        "details provided - never invent features, technologies, or "
+        "results that weren't mentioned. Do not use placeholder "
+        "brackets like [Project Name]. Write only the final content, "
+        "with no preamble, meta-commentary, or explanation of what "
+        "you did."
+    )
+
+    parts = [
+        f"Platform: {platform}",
+        f"Content type: {content_type}",
+        f"Tone: {tone}",
+    ]
+
+    if project_context:
+        parts.append(f"\nProject details:\n{project_context}")
+
+    if github_readme:
+        parts.append(
+            f"\nRelevant excerpt from the project's GitHub README "
+            f"(use this for real technical detail, don't just repeat "
+            f"it verbatim):\n{github_readme}"
+        )
 
     if prompt:
-        extra = f"\n\n{prompt}"
+        parts.append(f"\nSpecific instructions from the user:\n{prompt}")
 
-    if platform.lower() == "linkedin":
+    user_prompt = "\n".join(parts)
 
-        return (
-            f"🚀 Excited to share our latest "
-            f"{content_type}!\n\n"
-            f"This project represents our team's "
-            f"work, creativity, and problem-solving "
-            f"in the hackathon.\n\n"
-            f"Tone: {tone}."
-            f"{extra}\n\n"
-            f"#Hackathon #TeamBuilders #Innovation"
-        )
+    return system_prompt, user_prompt
 
-    if platform.lower() == "twitter":
 
-        return (
-            f"🚀 We built something exciting "
-            f"for our hackathon!\n\n"
-            f"{content_type} | Tone: {tone}"
-            f"{extra}\n\n"
-            f"#Hackathon #BuildInPublic"
-        )
+def _project_context_text(project) -> str:
+    lines = [f"Title: {project.title}"]
 
-    if platform.lower() == "instagram":
+    if project.description:
+        lines.append(f"Description: {project.description}")
 
-        return (
-            f"🚀 Hackathon vibes!\n\n"
-            f"We're excited to share our "
-            f"{content_type} with you."
-            f"{extra}\n\n"
-            f"#Hackathon #Innovation "
-            f"#TeamBuilders #Tech"
-        )
+    if project.tech_stack:
+        lines.append(f"Technology stack: {project.tech_stack}")
 
-    return (
-        f"{content_type} generated in a "
-        f"{tone} tone."
-        f"{extra}"
-    )
+    if project.demo_url:
+        lines.append(f"Demo: {project.demo_url}")
+
+    return "\n".join(lines)
 
 
 # =========================================================
@@ -81,17 +98,60 @@ async def create_generated_content(
     tone: str,
     prompt: str | None,
 ):
+    # -----------------------------------------------------
+    # Cost control: per-user daily generation limit
+    # -----------------------------------------------------
+
+    generations_today = await count_user_content_generations_today(
+        db, user_id
+    )
+
+    if generations_today >= settings.AI_DAILY_CONTENT_LIMIT:
+        raise ValueError(
+            f"You've reached today's AI content generation limit "
+            f"({settings.AI_DAILY_CONTENT_LIMIT}). Please try again "
+            f"tomorrow."
+        )
 
     # -----------------------------------------------------
-    # Generate content
+    # Gather grounding context
     # -----------------------------------------------------
 
-    generated_content = generate_content(
+    project_context = None
+    github_readme = None
+
+    if project_id:
+        project = await get_project_by_id(db, project_id)
+
+        if project:
+            project_context = _project_context_text(project)
+
+            if project.github_url:
+                github_readme = await fetch_github_readme(
+                    project.github_url
+                )
+
+    # -----------------------------------------------------
+    # Generate content via LLM
+    # -----------------------------------------------------
+
+    system_prompt, user_prompt = _build_prompt(
         platform=platform,
         content_type=content_type,
         tone=tone,
         prompt=prompt,
+        project_context=project_context,
+        github_readme=github_readme,
     )
+
+    try:
+        generated_content = await generate_text(system_prompt, user_prompt)
+
+    except AIServiceNotConfiguredError as exc:
+        raise ValueError(str(exc)) from exc
+
+    except AIServiceError as exc:
+        raise ValueError(str(exc)) from exc
 
     # -----------------------------------------------------
     # Save generated content

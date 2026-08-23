@@ -14,6 +14,8 @@ from app.models.hackathon import Hackathon
 from app.models.participant import Participant
 from app.models.team import Team
 from app.models.refresh_token import RefreshToken
+from app.models.otp_verification import OtpVerification
+from app.models.ai_evaluation import AiEvaluation
 
 
 config = context.config

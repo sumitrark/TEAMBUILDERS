@@ -3,6 +3,8 @@ from uuid import UUID
 from fastapi import (
     APIRouter,
     Depends,
+    HTTPException,
+    status,
 )
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,16 +43,30 @@ async def generate_content_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    try:
+        return await create_generated_content(
+            db=db,
+            user_id=current_user.id,
+            project_id=data.project_id,
+            platform=data.platform,
+            content_type=data.content_type,
+            tone=data.tone,
+            prompt=data.prompt,
+        )
 
-    return await create_generated_content(
-        db=db,
-        user_id=current_user.id,
-        project_id=data.project_id,
-        platform=data.platform,
-        content_type=data.content_type,
-        tone=data.tone,
-        prompt=data.prompt,
-    )
+    except ValueError as exc:
+        message = str(exc)
+
+        status_code = (
+            status.HTTP_429_TOO_MANY_REQUESTS
+            if "limit" in message.lower()
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+        raise HTTPException(
+            status_code=status_code,
+            detail=message,
+        ) from exc
 
 
 @router.get(

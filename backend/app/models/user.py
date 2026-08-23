@@ -85,6 +85,22 @@ class User(Base, BaseModel):
     )
 
     # -------------------------
+    # Phone / OTP Verification
+    # -------------------------
+
+    mobile_number: Mapped[str | None] = mapped_column(
+        String(20),
+        unique=True,
+        nullable=True,
+    )
+
+    phone_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    # -------------------------
     # Profile Information
     # -------------------------
 

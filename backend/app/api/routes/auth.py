@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies.current_user import get_current_user
 
 from app.db.database import get_db
+from app.schemas.otp import OtpStatusResponse, SendOtpRequest, VerifyOtpRequest
 from app.schemas.user import (
     LoginResponse,
     LogoutRequest,
@@ -20,6 +21,7 @@ from app.services.auth_service import (
     refresh_access_token,
     register_user,
 )
+from app.services.otp_service import request_otp, verify_otp
 
 router = APIRouter(
     prefix="/auth",
@@ -125,3 +127,50 @@ async def logout_all_route(
     db: AsyncSession = Depends(get_db),
 ):
     await logout_all(db, current_user.id)
+
+
+@router.post(
+    "/otp/send",
+    response_model=OtpStatusResponse,
+)
+async def send_otp(
+    payload: SendOtpRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await request_otp(
+            db,
+            current_user,
+            payload.mobile_number,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
+
+    return OtpStatusResponse(**result)
+
+
+@router.post("/otp/verify")
+async def verify_otp_route(
+    payload: VerifyOtpRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await verify_otp(
+            db,
+            current_user,
+            payload.otp,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return result
