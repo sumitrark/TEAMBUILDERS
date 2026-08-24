@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     GITHUB_CONTEXT_MAX_CHARS: int = 6000
 
     # ==========================
+    # Payments (Stripe)
+    # ==========================
+    STRIPE_SECRET_KEY: str | None = None
+    STRIPE_PUBLISHABLE_KEY: str | None = None
+    STRIPE_WEBHOOK_SECRET: str | None = None
+    STRIPE_PRICE_ID_PRO: str | None = None
+
+
+
+    # ==========================
     # Database
     # ==========================
     DATABASE_URL: str

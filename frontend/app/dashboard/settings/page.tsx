@@ -15,6 +15,8 @@ import {
   Settings,
 } from "@/services/settings";
 
+import PhoneVerification from "@/components/settings/PhoneVerification";
+
 const defaultSettings: Settings = {
   team_invitations: true,
   hackathon_reminders: true,
@@ -146,6 +148,31 @@ export default function SettingsPage() {
           </div>
 
         </div>
+      </section>
+
+      {/* Phone Verification */}
+      <section className="mb-6 rounded-2xl border bg-white p-6 shadow-sm">
+
+        <div className="mb-6 flex items-center gap-3">
+          <div className="rounded-xl bg-violet-100 p-3">
+            <Shield
+              className="text-violet-600"
+              size={22}
+            />
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold">
+              Phone Verification
+            </h2>
+
+            <p className="text-sm text-slate-500">
+              Verify your mobile number via OTP
+            </p>
+          </div>
+        </div>
+
+        <PhoneVerification />
       </section>
 
       {/* Notifications */}

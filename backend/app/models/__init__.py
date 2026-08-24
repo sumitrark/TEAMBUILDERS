@@ -17,3 +17,4 @@ from app.models.evaluation import Evaluation
 from app.models.refresh_token import RefreshToken
 from app.models.otp_verification import OtpVerification
 from app.models.ai_evaluation import AiEvaluation
+from app.models.payment_transaction import PaymentTransaction

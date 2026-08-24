@@ -11,8 +11,11 @@ import {
   getJudgeProject,
   getMyEvaluation,
   createEvaluation,
+  getAiEvaluation,
+  generateAiEvaluation,
   JudgeProject,
   Evaluation,
+  AiEvaluation,
 } from "@/services/judge";
 
 export default function EvaluateProjectPage() {
@@ -30,6 +33,18 @@ export default function EvaluateProjectPage() {
 
   const [evaluation, setEvaluation] =
     useState<Evaluation | null>(null);
+
+  const [aiEvaluation, setAiEvaluation] =
+    useState<AiEvaluation | null>(null);
+
+  const [loadingAiEvaluation, setLoadingAiEvaluation] =
+    useState(true);
+
+  const [generatingAiEvaluation, setGeneratingAiEvaluation] =
+    useState(false);
+
+  const [aiEvaluationError, setAiEvaluationError] =
+    useState("");
 
   const [innovation, setInnovation] =
     useState(5);
@@ -155,6 +170,62 @@ export default function EvaluateProjectPage() {
       load();
     }
   }, [projectId, hackathonId]);
+
+  // =========================================================
+  // LOAD EXISTING AI EVALUATION (independent of the main
+  // load() above so a slow/failed AI fetch never blocks the
+  // project details or the human evaluation form)
+  // =========================================================
+
+  useEffect(() => {
+    async function loadAiEvaluation() {
+      try {
+        setLoadingAiEvaluation(true);
+
+        const existing = await getAiEvaluation(projectId);
+
+        setAiEvaluation(existing);
+      } catch (err) {
+        console.error(
+          "Failed to load AI evaluation:",
+          err
+        );
+      } finally {
+        setLoadingAiEvaluation(false);
+      }
+    }
+
+    if (projectId) {
+      loadAiEvaluation();
+    }
+  }, [projectId]);
+
+  // =========================================================
+  // GENERATE AI EVALUATION
+  // =========================================================
+
+  async function handleGenerateAiEvaluation() {
+    try {
+      setGeneratingAiEvaluation(true);
+      setAiEvaluationError("");
+
+      const result = await generateAiEvaluation(projectId);
+
+      setAiEvaluation(result);
+    } catch (err: any) {
+      console.error(
+        "Failed to generate AI evaluation:",
+        err
+      );
+
+      setAiEvaluationError(
+        err?.response?.data?.detail ||
+          "Failed to generate AI evaluation."
+      );
+    } finally {
+      setGeneratingAiEvaluation(false);
+    }
+  }
 
   // =========================================================
   // SUBMIT EVALUATION
@@ -438,6 +509,222 @@ export default function EvaluateProjectPage() {
             )}
 
           </div>
+        </div>
+
+        {/* ================================================= */}
+        {/* AI-ASSISTED EVALUATION */}
+        {/* ================================================= */}
+
+        <div className="mt-6 rounded-3xl border bg-white p-8 shadow-sm">
+
+          <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+
+            <div>
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">
+                ✨ AI-ASSISTED — NOT A REPLACEMENT FOR YOUR JUDGMENT
+              </div>
+
+              <h2 className="text-2xl font-bold text-gray-900">
+                AI Evaluation
+              </h2>
+
+              <p className="mt-1 text-sm text-gray-500">
+                A quick, automated read of this project to help you get
+                started. Your own scoring above is what counts.
+              </p>
+            </div>
+
+            {!loadingAiEvaluation && (
+              <button
+                type="button"
+                onClick={handleGenerateAiEvaluation}
+                disabled={generatingAiEvaluation}
+                className="whitespace-nowrap rounded-xl border border-violet-200 bg-violet-50 px-5 py-2.5 text-sm font-semibold text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {generatingAiEvaluation
+                  ? "Generating..."
+                  : aiEvaluation
+                    ? "Regenerate"
+                    : "Generate AI Evaluation"}
+              </button>
+            )}
+
+          </div>
+
+          {aiEvaluationError && (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+              {aiEvaluationError}
+            </div>
+          )}
+
+          {loadingAiEvaluation ? (
+            <div className="flex items-center gap-3 rounded-xl border border-dashed border-gray-200 p-6 text-sm text-gray-400">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-500" />
+              Loading AI evaluation...
+            </div>
+          ) : generatingAiEvaluation ? (
+            <div className="flex items-center gap-3 rounded-xl border border-dashed border-violet-200 bg-violet-50/50 p-6 text-sm text-violet-600">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-violet-600" />
+              Analyzing project details, tech stack, and README...
+            </div>
+          ) : !aiEvaluation ? (
+            <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
+              No AI evaluation yet. Click &quot;Generate AI Evaluation&quot;
+              above to get an AI-assisted read of this project.
+            </div>
+          ) : (
+            <div className="space-y-8">
+
+              {/* SCORES */}
+
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+
+                {[
+                  { label: "Overall", value: aiEvaluation.overall_score, max: 100 },
+                  { label: "Innovation", value: aiEvaluation.innovation_score, max: 25 },
+                  { label: "Technical", value: aiEvaluation.technical_score, max: 25 },
+                  { label: "Impact", value: aiEvaluation.impact_score, max: 25 },
+                  { label: "Feasibility", value: aiEvaluation.feasibility_score, max: 25 },
+                ].map((score) => (
+                  <div
+                    key={score.label}
+                    className={`rounded-2xl border p-4 text-center ${
+                      score.label === "Overall"
+                        ? "border-violet-300 bg-violet-50"
+                        : "border-gray-200 bg-gray-50"
+                    }`}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                      {score.label}
+                    </p>
+                    <p
+                      className={`mt-1 text-2xl font-bold ${
+                        score.label === "Overall"
+                          ? "text-violet-700"
+                          : "text-gray-800"
+                      }`}
+                    >
+                      {score.value}
+                      <span className="text-sm font-medium text-gray-400">
+                        /{score.max}
+                      </span>
+                    </p>
+                  </div>
+                ))}
+
+              </div>
+
+              {/* UI/UX NOTES */}
+
+              {aiEvaluation.ui_ux_notes && (
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+                    UI / UX Observations
+                  </h3>
+                  <p className="mt-2 text-gray-700">
+                    {aiEvaluation.ui_ux_notes}
+                  </p>
+                </div>
+              )}
+
+              {/* STRENGTHS / WEAKNESSES */}
+
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                    Strengths
+                  </h3>
+                  {aiEvaluation.strengths.length === 0 ? (
+                    <p className="mt-2 text-sm text-gray-400">None noted.</p>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {aiEvaluation.strengths.map((item, i) => (
+                        <li
+                          key={i}
+                          className="flex gap-2 text-sm text-gray-700"
+                        >
+                          <span className="text-emerald-500">✓</span>
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-600">
+                    Weaknesses
+                  </h3>
+                  {aiEvaluation.weaknesses.length === 0 ? (
+                    <p className="mt-2 text-sm text-gray-400">None noted.</p>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {aiEvaluation.weaknesses.map((item, i) => (
+                        <li
+                          key={i}
+                          className="flex gap-2 text-sm text-gray-700"
+                        >
+                          <span className="text-amber-500">!</span>
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+              </div>
+
+              {/* SUGGESTIONS */}
+
+              {aiEvaluation.suggestions.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-violet-600">
+                    Suggestions
+                  </h3>
+                  <ul className="mt-2 space-y-2">
+                    {aiEvaluation.suggestions.map((item, i) => (
+                      <li
+                        key={i}
+                        className="flex gap-2 text-sm text-gray-700"
+                      >
+                        <span className="text-violet-500">→</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* POTENTIAL ISSUES */}
+
+              {aiEvaluation.potential_issues.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-red-500">
+                    Potential Issues
+                  </h3>
+                  <ul className="mt-2 space-y-2">
+                    {aiEvaluation.potential_issues.map((item, i) => (
+                      <li
+                        key={i}
+                        className="flex gap-2 text-sm text-gray-700"
+                      >
+                        <span className="text-red-400">⚠</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <p className="border-t pt-4 text-xs text-gray-400">
+                Generated by {aiEvaluation.model_name} ·{" "}
+                {new Date(aiEvaluation.updated_at).toLocaleString()}
+              </p>
+
+            </div>
+          )}
+
         </div>
 
         {/* ================================================= */}

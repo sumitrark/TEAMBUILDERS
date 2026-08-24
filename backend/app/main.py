@@ -32,6 +32,7 @@ from app.api.routes.user import router as user_router
 from app.api.routes.evaluation import router as evaluation_router
 
 from app.api.routes.judge import router as judge_router
+from app.api.routes.payments import router as payments_router
 print("✅ LOADED app/main.py WITH PARTICIPANT ROUTER")
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -155,6 +156,7 @@ app.include_router(
     prefix="/api/v1",
 )
 app.include_router(judge_router, prefix="/api/v1")
+app.include_router(payments_router, prefix="/api/v1")
 
 for route in app.router.routes:
     if hasattr(route, "path"):

@@ -43,6 +43,9 @@ export interface User {
   role: UserRole;
   is_active: boolean;
 
+  mobile_number?: string | null;
+  phone_verified?: boolean;
+
   bio?: string | null;
   github_url?: string | null;
   linkedin_url?: string | null;
