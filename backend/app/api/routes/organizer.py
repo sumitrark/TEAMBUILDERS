@@ -411,6 +411,37 @@ async def invite_hackathon_judge(
         "email": payload.email,
         "status": result.status,
     }
+
+
+@router.delete(
+    "/hackathons/{hackathon_id}/judges/{judge_id}",
+)
+async def remove_hackathon_judge(
+    hackathon_id: UUID,
+    judge_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_organizer),
+):
+    result = await remove_judge(
+        db=db,
+        organizer_id=current_user.id,
+        hackathon_id=hackathon_id,
+        judge_id=judge_id,
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found or you do not own it",
+        )
+
+    if result is False:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Judge not found for this hackathon",
+        )
+
+    return {"message": "Judge removed successfully"}
 # ============================================================
 # ANALYTICS
 # ============================================================

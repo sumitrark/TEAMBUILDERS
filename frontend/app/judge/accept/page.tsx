@@ -1,8 +1,16 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+
+interface PendingInvitation {
+  judge_id: string;
+  hackathon_id: string;
+  hackathon_title: string;
+  status: string;
+  created_at: string;
+}
 
 export default function JudgeAcceptPage() {
   const router = useRouter();
@@ -11,6 +19,84 @@ export default function JudgeAcceptPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const [pending, setPending] = useState<PendingInvitation[]>([]);
+  const [loadingPending, setLoadingPending] = useState(true);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+
+  // =========================================================
+  // LOAD PENDING EMAIL INVITATIONS
+  // =========================================================
+
+  useEffect(() => {
+    async function loadPending() {
+      try {
+        setLoadingPending(true);
+
+        const response = await api.get(
+          "/judge/invitations/pending"
+        );
+
+        setPending(
+          Array.isArray(response.data) ? response.data : []
+        );
+      } catch (err) {
+        console.error("Failed to load pending invitations:", err);
+      } finally {
+        setLoadingPending(false);
+      }
+    }
+
+    loadPending();
+  }, []);
+
+  // =========================================================
+  // RESPOND TO A PENDING EMAIL INVITATION
+  // =========================================================
+
+  async function respondToInvitation(
+    judgeId: string,
+    action: "accept" | "decline"
+  ) {
+    try {
+      setRespondingId(judgeId);
+      setError("");
+      setMessage("");
+
+      const response = await api.post(
+        `/judge/invitations/${judgeId}/${action}`
+      );
+
+      setMessage(
+        response.data?.message ||
+          (action === "accept"
+            ? "Invitation accepted."
+            : "Invitation declined.")
+      );
+
+      setPending((previous) =>
+        previous.filter((item) => item.judge_id !== judgeId)
+      );
+
+      if (action === "accept") {
+        setTimeout(() => {
+          router.push("/dashboard");
+        }, 1200);
+      }
+    } catch (err: any) {
+      console.error(
+        `Failed to ${action} invitation:`,
+        err
+      );
+
+      setError(
+        err?.response?.data?.detail ||
+          `Failed to ${action} invitation.`
+      );
+    } finally {
+      setRespondingId(null);
+    }
+  }
 
   async function handleAccept(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -46,23 +132,15 @@ export default function JudgeAcceptPage() {
         router.push("/dashboard");
       }, 1500);
     } catch (error: any) {
-  console.log(
-    "INVITE ERROR STATUS:",
-    error?.response?.status
-  );
+      console.error(
+        "Failed to accept invitation:",
+        error
+      );
 
-  console.log(
-    "INVITE ERROR DATA:",
-    error?.response?.data
-  );
-
-  alert(
-    JSON.stringify(
-      error?.response?.data,
-      null,
-      2
-    )
-  );
+      setError(
+        error?.response?.data?.detail ||
+          "Failed to accept invitation. Please check the code and try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -70,7 +148,61 @@ export default function JudgeAcceptPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50 px-6 py-12">
-      <div className="mx-auto flex min-h-[80vh] max-w-lg items-center justify-center">
+      <div className="mx-auto flex min-h-[80vh] max-w-lg flex-col items-center justify-center gap-6">
+
+        {/* Pending email invitations */}
+        {!loadingPending && pending.length > 0 && (
+          <div className="w-full rounded-3xl border border-gray-200 bg-white p-6 shadow-xl">
+
+            <h2 className="mb-4 text-lg font-bold text-gray-900">
+              Pending Judge Invitations
+            </h2>
+
+            <div className="space-y-3">
+              {pending.map((invite) => (
+                <div
+                  key={invite.judge_id}
+                  className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4"
+                >
+                  <div>
+                    <p className="font-semibold text-gray-900">
+                      {invite.hackathon_title}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Invited to judge this hackathon
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        respondToInvitation(invite.judge_id, "accept")
+                      }
+                      disabled={respondingId === invite.judge_id}
+                      className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Accept
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        respondToInvitation(invite.judge_id, "decline")
+                      }
+                      disabled={respondingId === invite.judge_id}
+                      className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+          </div>
+        )}
+
         <div className="w-full rounded-3xl border border-gray-200 bg-white p-8 shadow-xl">
           
           {/* Header */}

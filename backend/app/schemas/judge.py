@@ -64,3 +64,15 @@ class JudgeStatusResponse(BaseModel):
     hackathon_id: UUID
     user_id: UUID
     status: str
+
+
+# ============================================================
+# PENDING INVITATIONS
+# ============================================================
+
+class JudgePendingInvitationResponse(BaseModel):
+    judge_id: UUID
+    hackathon_id: UUID
+    hackathon_title: str
+    status: str
+    created_at: datetime

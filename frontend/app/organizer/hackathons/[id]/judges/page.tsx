@@ -13,6 +13,7 @@ import {
 import {
   getHackathonJudges,
   inviteJudge,
+  removeJudge,
 } from "@/services/organizerHackathon";
 
 interface Judge {
@@ -38,7 +39,9 @@ export default function JudgesPage() {
 
   const [loading, setLoading] = useState(true);
   const [inviting, setInviting] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   async function loadJudges() {
     try {
@@ -80,7 +83,7 @@ export default function JudgesPage() {
         email.trim()
       );
 
-      alert("Judge invitation created successfully.");
+      setMessage("Judge invitation created successfully.");
 
       setEmail("");
 
@@ -94,6 +97,32 @@ export default function JudgesPage() {
       );
     } finally {
       setInviting(false);
+    }
+  }
+
+  async function handleRemove(judgeId: string) {
+    if (!confirm("Remove this judge from the hackathon?")) {
+      return;
+    }
+
+    try {
+      setRemovingId(judgeId);
+      setError("");
+
+      await removeJudge(id, judgeId);
+
+      setMessage("Judge removed successfully.");
+
+      await loadJudges();
+    } catch (error: any) {
+      console.error(error);
+
+      setError(
+        error?.response?.data?.detail ??
+          "Failed to remove judge"
+      );
+    } finally {
+      setRemovingId(null);
     }
   }
 
@@ -144,6 +173,13 @@ export default function JudgesPage() {
         {error && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {/* SUCCESS */}
+        {message && (
+          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+            {message}
           </div>
         )}
 
@@ -281,9 +317,35 @@ export default function JudgesPage() {
 
                       </div>
 
-                      <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold capitalize text-green-700">
-                        {judge.status}
-                      </span>
+                      <div className="flex items-center gap-4">
+
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+                            judge.status === "active" ||
+                            judge.status === "accepted"
+                              ? "bg-green-100 text-green-700"
+                              : judge.status === "invited"
+                                ? "bg-amber-100 text-amber-700"
+                                : judge.status === "declined"
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {judge.status}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemove(judge.id)}
+                          disabled={removingId === judge.id}
+                          className="text-sm font-medium text-red-500 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {removingId === judge.id
+                            ? "Removing..."
+                            : "Remove"}
+                        </button>
+
+                      </div>
 
                     </div>
                   ))}
