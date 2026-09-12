@@ -221,8 +221,8 @@ function JudgeProjectsContent() {
 
                         <p className="mt-1 text-sm text-gray-500">
                           Team:{" "}
-                          <span className="font-medium text-gray-700">
-                            {project.team_name}
+                          <span className="font-mono font-medium text-gray-700">
+                            {project.team_display_id || "Unassigned"}
                           </span>
                         </p>
 

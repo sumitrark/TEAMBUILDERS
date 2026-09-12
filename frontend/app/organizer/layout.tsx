@@ -1,4 +1,5 @@
 import OrganizerSidebar from "@/components/organizer/OrganizerSidebar";
+import OrganizerTopbar from "@/components/organizer/OrganizerTopbar";
 
 export default function OrganizerLayout({
   children,
@@ -10,7 +11,8 @@ export default function OrganizerLayout({
       <OrganizerSidebar />
 
       <main className="min-h-screen pl-64">
-        {children}
+        <OrganizerTopbar />
+        <div>{children}</div>
       </main>
     </div>
   );

@@ -444,11 +444,20 @@ export default function EvaluateProjectPage() {
 
               <p className="mt-2 text-gray-500">
                 Team:{" "}
-                <span className="font-semibold text-gray-700">
-                  {project.team_name}
+                <span className="font-mono font-semibold text-gray-700">
+                  {project.team_display_id || "Unassigned"}
                 </span>
               </p>
             </div>
+
+            {project.ai_tools_used && (
+              <div className="mb-6 rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-700">
+                <span className="font-semibold">
+                  AI tools disclosed by the team:
+                </span>{" "}
+                {project.ai_tools_used}
+              </div>
+            )}
 
             {/* LINKS */}
 

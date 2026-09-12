@@ -57,15 +57,48 @@ async def register_user(
 
     # -----------------------------------------------------
     # VALIDATE ROLE
+    #
+    # "judge" is only allowed alongside a valid, unexpired
+    # invitation token whose invited_email matches - judge
+    # registration is never publicly open on its own.
     # -----------------------------------------------------
 
     if payload.role not in {
         "student",
         "organizer",
+        "judge",
     }:
         raise ValueError(
             "Invalid registration role"
         )
+
+    if payload.role == "judge":
+        from app.crud.judge_invitation import get_invitation_by_token
+
+        if not payload.invitation_token:
+            raise ValueError(
+                "Judge registration requires a valid invitation link"
+            )
+
+        invitation = await get_invitation_by_token(
+            db, payload.invitation_token
+        )
+
+        if not invitation:
+            raise ValueError(
+                "This invitation link is invalid"
+            )
+
+        if invitation.invited_email.lower() != payload.email.lower():
+            raise ValueError(
+                "This invitation was sent to a different email address"
+            )
+
+        if invitation.status != "pending":
+            raise ValueError(
+                f"This invitation is no longer valid "
+                f"(status: {invitation.status})"
+            )
 
     # -----------------------------------------------------
     # STUDENT VALIDATION

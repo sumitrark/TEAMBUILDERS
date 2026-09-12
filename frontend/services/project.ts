@@ -7,6 +7,7 @@ export interface ProjectPayload {
   github_url?: string;
   demo_url?: string;
   team_id?: string | null;
+  ai_tools_used?: string;
 }
 
 export interface Project {
@@ -18,6 +19,7 @@ export interface Project {
   demo_url: string | null;
   owner_id: string;
   team_id: string | null;
+  ai_tools_used: string | null;
   created_at: string;
 }
 

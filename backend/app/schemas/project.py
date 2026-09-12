@@ -12,6 +12,10 @@ class ProjectCreate(BaseModel):
     demo_url: str | None = None
     team_id: UUID | None = None
 
+    # Self-disclosed AI tools used (e.g. "ChatGPT for boilerplate,
+    # GitHub Copilot for autocomplete"). Optional, freeform.
+    ai_tools_used: str | None = None
+
 
 class ProjectResponse(BaseModel):
     id: UUID
@@ -22,6 +26,7 @@ class ProjectResponse(BaseModel):
     demo_url: str | None
     owner_id: UUID
     team_id: UUID | None
+    ai_tools_used: str | None
     created_at: datetime
 
     model_config = ConfigDict(

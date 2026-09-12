@@ -12,6 +12,7 @@ import {
   Bell,
   Check,
   CheckCheck,
+  Gavel,
   Mail,
   Trophy,
   Users,
@@ -43,6 +44,15 @@ function getNotificationIcon(type: string) {
 
     case "team":
       return <Users size={18} />;
+
+    case "judge_invitation":
+      return <Gavel size={18} />;
+
+    case "judge_invitation_accepted":
+      return <Check size={18} />;
+
+    case "judge_invitation_declined":
+      return <X size={18} />;
 
     default:
       return <Bell size={18} />;

@@ -25,6 +25,7 @@ async def create_project(
         demo_url=data.demo_url,
         team_id=data.team_id,
         owner_id=owner_id,
+        ai_tools_used=data.ai_tools_used,
     )
 
     db.add(project)

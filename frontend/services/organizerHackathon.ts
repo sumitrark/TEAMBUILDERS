@@ -225,6 +225,51 @@ export async function removeJudge(
   return response.data;
 }
 
+export interface JudgeInvitation {
+  id: string;
+  hackathon_id: string;
+  invited_email: string;
+  invited_user_id: string | null;
+  status: string;
+  expires_at: string;
+  accepted_at: string | null;
+  declined_at: string | null;
+  created_at: string;
+  dev_invitation_link: string | null;
+}
+
+export async function getJudgeInvitations(
+  hackathonId: string
+): Promise<JudgeInvitation[]> {
+  const response = await api.get<JudgeInvitation[]>(
+    `/organizer/hackathons/${hackathonId}/judges/invitations`
+  );
+
+  return response.data;
+}
+
+export async function resendJudgeInvitation(
+  hackathonId: string,
+  invitationId: string
+): Promise<JudgeInvitation> {
+  const response = await api.post<JudgeInvitation>(
+    `/organizer/hackathons/${hackathonId}/judges/invitations/${invitationId}/resend`
+  );
+
+  return response.data;
+}
+
+export async function cancelJudgeInvitation(
+  hackathonId: string,
+  invitationId: string
+) {
+  const response = await api.delete(
+    `/organizer/hackathons/${hackathonId}/judges/invitations/${invitationId}`
+  );
+
+  return response.data;
+}
+
 // ============================================================
 // ANALYTICS
 // ============================================================

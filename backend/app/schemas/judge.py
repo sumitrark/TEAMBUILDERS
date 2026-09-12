@@ -16,6 +16,16 @@ class JudgeAcceptRequest(BaseModel):
     invitation_code: str
 
 
+class MyJudgeHackathonResponse(BaseModel):
+    hackathon_id: UUID
+    title: str
+    description: str | None
+    status: str
+    total_projects: int
+    evaluated_count: int
+    pending_count: int
+
+
 class JudgeResponse(BaseModel):
     id: UUID
     hackathon_id: UUID
@@ -38,8 +48,13 @@ class JudgeProjectResponse(BaseModel):
     tech_stack: str | None
     github_url: str | None
     demo_url: str | None
-    owner_id: UUID
     team_id: UUID | None
+    ai_tools_used: str | None
+
+    # Anonymized team identifier only - never the real team name or
+    # any member identity. Judges evaluate work, not who submitted
+    # it, to reduce bias.
+    team_display_id: str | None
     created_at: datetime
 
     model_config = ConfigDict(

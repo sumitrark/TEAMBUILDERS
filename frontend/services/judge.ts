@@ -7,9 +7,12 @@ export interface JudgeProject {
   tech_stack: string | null;
   github_url: string | null;
   demo_url: string | null;
-  owner_id: string;
   team_id: string | null;
-  team_name: string;
+  ai_tools_used: string | null;
+
+  // Anonymized identifier only - the real team name and any member
+  // identity are never sent to judges, to reduce evaluation bias.
+  team_display_id: string | null;
   created_at: string;
 }
 
@@ -68,6 +71,29 @@ export interface AiEvaluation {
 // ============================================================
 // GET PROJECTS FOR JUDGE
 // ============================================================
+
+export interface MyJudgeHackathon {
+  hackathon_id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  total_projects: number;
+  evaluated_count: number;
+  pending_count: number;
+}
+
+export async function getMyJudgeHackathons(): Promise<MyJudgeHackathon[]> {
+  const response = await api.get<MyJudgeHackathon[]>(
+    "/judge/hackathons"
+  );
+
+  return response.data;
+}
+
+export async function getMyEvaluations(): Promise<Evaluation[]> {
+  const response = await api.get<Evaluation[]>("/evaluations/my");
+  return response.data;
+}
 
 export async function getJudgeProjects(
   hackathonId: string

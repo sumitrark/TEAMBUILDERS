@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api";
+import ProctoringCheckIn from "@/components/dashboard/ProctoringCheckIn";
 
 interface Hackathon {
   id: string;
@@ -371,6 +372,16 @@ export default function HackathonDetailsPage() {
             </div>
 
           </section>
+
+          {/* Presence check-in - only meaningful while the
+              hackathon is actually running. The backend is the
+              real authorization boundary (only an actual registered
+              participant can submit a check-in); this date check is
+              just to avoid showing an irrelevant widget. */}
+          {new Date() >= new Date(hackathon.start_date) &&
+            new Date() <= new Date(hackathon.end_date) && (
+              <ProctoringCheckIn hackathonId={hackathon.id} />
+            )}
 
         </div>
 

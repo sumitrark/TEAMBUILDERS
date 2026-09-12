@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     OTP_RATE_LIMIT_WINDOW_MINUTES: int = 60
 
     # ==========================
+    # Email
+    # ==========================
+    # Left unset - no real email infrastructure exists yet. When
+    # unset, invitation-sending endpoints return the invitation link
+    # directly in the API response instead of pretending an email
+    # was sent, so the organizer can copy/share it manually.
+    EMAIL_PROVIDER: str | None = None
+
+    # ==========================
     # AI
     # ==========================
     OPENAI_API_KEY: str | None = None

@@ -1,13 +1,236 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { register } from "@/services/auth";
+import { api } from "@/lib/api";
 
 type Role = "student" | "organizer";
 
-export default function RegisterPage() {
+function JudgeInvitationRegisterForm({
+  invitationToken,
+}: {
+  invitationToken: string;
+}) {
+  const router = useRouter();
+
+  const [invitedEmail, setInvitedEmail] = useState("");
+  const [hackathonTitle, setHackathonTitle] = useState("");
+  const [loadingInvitation, setLoadingInvitation] = useState(true);
+  const [invitationError, setInvitationError] = useState("");
+
+  const [fullName, setFullName] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function loadInvitation() {
+      try {
+        setLoadingInvitation(true);
+
+        const response = await api.get(
+          `/judge/invitations/token/${invitationToken}`
+        );
+
+        setInvitedEmail(response.data.invited_email);
+        setHackathonTitle(response.data.hackathon_title);
+
+        if (response.data.is_expired || response.data.status !== "pending") {
+          setInvitationError(
+            "This invitation is no longer valid. Please ask the " +
+              "organizer for a new one."
+          );
+        }
+      } catch (err) {
+        console.error("Failed to load invitation:", err);
+        setInvitationError(
+          "This invitation link is invalid or has expired."
+        );
+      } finally {
+        setLoadingInvitation(false);
+      }
+    }
+
+    loadInvitation();
+  }, [invitationToken]);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    setSubmitting(true);
+    setError("");
+
+    try {
+      await register({
+        full_name: fullName,
+        email: invitedEmail,
+        password,
+        role: "judge",
+        invitation_token: invitationToken,
+      });
+
+      // Return to the same invitation link after login, so the
+      // judge can explicitly accept - registering never
+      // auto-accepts.
+      router.push(
+        `/login?redirect=${encodeURIComponent(
+          `/judge/invite/${invitationToken}`
+        )}`
+      );
+    } catch (err: any) {
+      console.error("Judge registration failed:", err);
+
+      setError(
+        err?.response?.data?.detail ??
+          "Registration failed. Please check your details."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loadingInvitation) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-100 via-white to-blue-100">
+        <p className="text-gray-500">Loading invitation...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-100 via-white to-blue-100 px-4">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8">
+
+        <div className="text-center mb-8">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-2xl">
+            ⚖️
+          </div>
+
+          <p className="text-sm font-semibold tracking-widest text-violet-600">
+            JUDGE INVITATION
+          </p>
+
+          <h1 className="text-2xl font-bold text-gray-800 mt-2">
+            Create Your Judge Account
+          </h1>
+
+          {hackathonTitle && (
+            <p className="text-gray-500 mt-2">
+              to judge <strong>{hackathonTitle}</strong>
+            </p>
+          )}
+        </div>
+
+        {invitationError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {invitationError}
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-5">
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Full Name
+              </label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                className="w-full border border-gray-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-violet-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={invitedEmail}
+                readOnly
+                className="w-full cursor-not-allowed border border-gray-200 bg-gray-50 rounded-xl p-3 text-gray-500 outline-none"
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                This invitation was sent to this address and can't be
+                changed.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  minLength={8}
+                  required
+                  className="w-full border border-gray-300 rounded-xl p-3 pr-11 outline-none focus:ring-2 focus:ring-violet-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-xl bg-violet-600 py-3 font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? "Creating Account..." : "Create Judge Account"}
+            </button>
+
+            <p className="text-center text-sm text-gray-600">
+              Already have an account?{" "}
+              <a
+                href={`/login?redirect=${encodeURIComponent(
+                  `/judge/invite/${invitationToken}`
+                )}`}
+                className="text-violet-600 font-semibold hover:underline"
+              >
+                Log in
+              </a>
+            </p>
+
+          </form>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+function RegisterPageContent() {
+  const searchParams = useSearchParams();
+  const invitationToken = searchParams.get("invitation_token");
+
+  if (invitationToken) {
+    return (
+      <JudgeInvitationRegisterForm invitationToken={invitationToken} />
+    );
+  }
+
+  return <StandardRegisterForm />;
+}
+
+function StandardRegisterForm() {
   const router = useRouter();
 
   const [role, setRole] = useState<Role>("student");
@@ -445,5 +668,13 @@ export default function RegisterPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterPageContent />
+    </Suspense>
   );
 }

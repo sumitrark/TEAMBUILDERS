@@ -54,6 +54,15 @@ class Project(Base):
         nullable=True,
     )
 
+    # Self-disclosed by the team at submission time - there is no
+    # reliable way to actually detect which AI tools someone used
+    # (a web app can't see into other tabs, devices, or desktop
+    # apps), so this is transparency-based, not surveillance-based.
+    ai_tools_used: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

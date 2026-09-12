@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { login } from "@/services/auth";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect");
 
   const [form, setForm] = useState({
     email: "",
@@ -42,8 +44,13 @@ export default function LoginPage() {
 
       const role = data.user?.role?.toLowerCase();
 
-      console.log("Authenticated user:", data.user);
-      console.log("User role:", role);
+      // If we arrived here from a specific link (e.g. a judge
+      // invitation), return there instead of the default
+      // role-based destination so context isn't lost.
+      if (redirectTo) {
+        router.push(redirectTo);
+        return;
+      }
 
       if (role === "organizer") {
         router.push("/organizer");
@@ -154,5 +161,13 @@ export default function LoginPage() {
       </div>
 
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

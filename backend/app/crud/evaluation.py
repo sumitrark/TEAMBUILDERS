@@ -16,19 +16,18 @@ async def create_evaluation(
     user_id: UUID,
     data: EvaluationCreate,
 ):
-    judge_result = await db.execute(
-        select(Judge).where(
-            Judge.user_id == user_id,
-            Judge.status.in_(
-                ["active", "accepted"]
-            ),
-        )
-    )
-
-    judge = judge_result.scalar_one_or_none()
-
-    if judge is None:
-        return "NOT_A_JUDGE"
+    # --------------------------------------------------------
+    # Look up the project/team FIRST so we know which hackathon
+    # this evaluation is actually for, then check for an active
+    # Judge row scoped to that exact hackathon.
+    #
+    # The previous version queried Judge by user_id alone (no
+    # hackathon filter) and called .scalar_one_or_none() - for any
+    # judge active across more than one hackathon (an explicitly
+    # supported scenario), that raises MultipleResultsFound and the
+    # evaluation crashes instead of being correctly authorized or
+    # rejected.
+    # --------------------------------------------------------
 
     project_result = await db.execute(
         select(Project).where(
@@ -55,8 +54,20 @@ async def create_evaluation(
     if team is None:
         return "TEAM_NOT_FOUND"
 
-    if judge.hackathon_id != team.hackathon_id:
-        return "JUDGE_HACKATHON_MISMATCH"
+    judge_result = await db.execute(
+        select(Judge).where(
+            Judge.user_id == user_id,
+            Judge.hackathon_id == team.hackathon_id,
+            Judge.status.in_(
+                ["active", "accepted"]
+            ),
+        )
+    )
+
+    judge = judge_result.scalar_one_or_none()
+
+    if judge is None:
+        return "NOT_A_JUDGE"
 
     from app.models.team_member import TeamMember
 

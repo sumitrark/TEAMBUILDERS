@@ -12,6 +12,9 @@ export interface RegisterRequest {
 
   role: UserRole;
 
+  // Judge registration (only valid alongside a JudgeInvitation token)
+  invitation_token?: string;
+
   // Student fields
   college?: string;
   course?: string;

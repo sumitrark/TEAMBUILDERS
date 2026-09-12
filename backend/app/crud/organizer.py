@@ -11,6 +11,7 @@ from app.models.project import Project
 from app.models.judge import Judge
 from app.models.user import User
 from app.schemas.organizer import OrganizerHackathonUpdate
+from app.crud.notification import create_notification
 
 
 # ============================================================
@@ -384,6 +385,12 @@ async def invite_judge(
     email: str,
 ):
     from app.models.judge import Judge
+    from app.crud.judge_invitation import (
+        create_invitation,
+        get_pending_invitation_for_hackathon_email,
+    )
+
+    normalized_email = email.lower().strip()
 
     # --------------------------------------------------------
     # 1. Verify organizer owns hackathon
@@ -402,68 +409,117 @@ async def invite_judge(
         return "HACKATHON_NOT_FOUND"
 
     # --------------------------------------------------------
-    # 2. Find user by email
+    # 2. If a matching user account exists, check for conflicts.
+    #    (If no account exists yet, none of these can apply - that
+    #    is exactly the case this workflow is meant to support.)
     # --------------------------------------------------------
 
     result = await db.execute(
-        select(User).where(
-            User.email == email
-        )
+        select(User).where(User.email == normalized_email)
     )
-
     user = result.scalar_one_or_none()
 
-    if user is None:
-        return "USER_NOT_FOUND"
-
-    # --------------------------------------------------------
-    # 3. Check whether user is already a participant
-    # --------------------------------------------------------
-
-    result = await db.execute(
-        select(Participant).where(
-            Participant.hackathon_id == hackathon_id,
-            Participant.user_id == user.id,
+    if user is not None:
+        result = await db.execute(
+            select(Participant).where(
+                Participant.hackathon_id == hackathon_id,
+                Participant.user_id == user.id,
+            )
         )
+
+        if result.scalar_one_or_none() is not None:
+            return "PARTICIPANT_CONFLICT"
+
+        result = await db.execute(
+            select(Judge).where(
+                Judge.hackathon_id == hackathon_id,
+                Judge.user_id == user.id,
+                Judge.status == "active",
+            )
+        )
+
+        if result.scalar_one_or_none() is not None:
+            return "ALREADY_JUDGE"
+
+    # --------------------------------------------------------
+    # 3. Prevent duplicate active invitations for the same
+    #    hackathon + email - resend instead.
+    # --------------------------------------------------------
+
+    existing_pending = await get_pending_invitation_for_hackathon_email(
+        db, hackathon_id, normalized_email
     )
 
-    participant = result.scalar_one_or_none()
-
-    if participant is not None:
-        return "PARTICIPANT_CONFLICT"
+    if existing_pending is not None:
+        return "ALREADY_INVITED"
 
     # --------------------------------------------------------
-    # 4. Check existing judge
+    # 4. Create the invitation (works whether or not the invited
+    #    email has an account yet).
     # --------------------------------------------------------
 
-    result = await db.execute(
-        select(Judge).where(
-            Judge.hackathon_id == hackathon_id,
-            Judge.user_id == user.id,
-        )
-    )
-
-    existing_judge = result.scalar_one_or_none()
-
-    if existing_judge is not None:
-        return "ALREADY_JUDGE"
-
-    # --------------------------------------------------------
-    # 5. Create judge invitation
-    # --------------------------------------------------------
-
-    judge = Judge(
+    return await create_invitation(
+        db=db,
         hackathon_id=hackathon_id,
-        user_id=user.id,
-        status="invited",
+        organizer_id=organizer_id,
+        email=normalized_email,
     )
 
-    db.add(judge)
 
-    await db.commit()
-    await db.refresh(judge)
+async def get_organizer_judge_invitations(
+    db: AsyncSession,
+    organizer_id: UUID,
+    hackathon_id: UUID,
+):
+    from app.crud.judge_invitation import get_hackathon_invitations
 
-    return judge
+    result = await db.execute(
+        select(Hackathon).where(
+            Hackathon.id == hackathon_id,
+            Hackathon.organizer_id == organizer_id,
+        )
+    )
+
+    if result.scalar_one_or_none() is None:
+        return "HACKATHON_NOT_FOUND"
+
+    return await get_hackathon_invitations(db, hackathon_id)
+
+
+async def resend_organizer_judge_invitation(
+    db: AsyncSession,
+    organizer_id: UUID,
+    invitation_id: UUID,
+):
+    from app.crud.judge_invitation import get_invitation_by_id, resend_invitation
+
+    invitation = await get_invitation_by_id(db, invitation_id)
+
+    if invitation is None or invitation.organizer_id != organizer_id:
+        return "NOT_FOUND"
+
+    if invitation.status not in ("pending", "expired"):
+        return "NOT_RESENDABLE"
+
+    return await resend_invitation(db, invitation)
+
+
+async def cancel_organizer_judge_invitation(
+    db: AsyncSession,
+    organizer_id: UUID,
+    invitation_id: UUID,
+):
+    from app.crud.judge_invitation import get_invitation_by_id, cancel_invitation
+
+    invitation = await get_invitation_by_id(db, invitation_id)
+
+    if invitation is None or invitation.organizer_id != organizer_id:
+        return "NOT_FOUND"
+
+    if invitation.status != "pending":
+        return "NOT_CANCELLABLE"
+
+    return await cancel_invitation(db, invitation)
 
 async def get_organizer_participants(
     db: AsyncSession,
