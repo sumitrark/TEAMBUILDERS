@@ -410,6 +410,16 @@ export default function ManageHackathonPage() {
                 >
                   ⚖️ Manage Judges
                 </button>
+                <button
+                  onClick={() =>
+                    router.push(
+                      `/organizer/hackathons/${hackathon.id}/criteria`
+                    )
+                  }
+                  className="w-full rounded-xl border px-4 py-3 text-left text-sm font-medium hover:bg-gray-50"
+                >
+                  Evaluation Criteria
+                </button>
 
               </div>
 

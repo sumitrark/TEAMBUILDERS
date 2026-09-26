@@ -4,11 +4,52 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.evaluation import Evaluation
+from app.models.evaluation_criterion import EvaluationCriterion
 from app.models.project import Project
 from app.models.team import Team
 from app.models.judge import Judge
-from app.models.hackathon import Hackathon
 from app.schemas.evaluation import EvaluationCreate
+
+
+async def _get_active_criteria(
+    db: AsyncSession,
+    hackathon_id: UUID,
+):
+    result = await db.execute(
+        select(EvaluationCriterion)
+        .where(
+            EvaluationCriterion.hackathon_id == hackathon_id,
+            EvaluationCriterion.is_active.is_(True),
+        )
+        .order_by(
+            EvaluationCriterion.display_order.asc(),
+            EvaluationCriterion.created_at.asc(),
+        )
+    )
+
+    return result.scalars().all()
+
+
+def _calculate_weighted_score(
+    criteria,
+    criterion_scores: dict[str, int],
+) -> float | None:
+    if not criteria:
+        return None
+
+    total_weight = sum(c.weight for c in criteria)
+
+    if total_weight <= 0:
+        return None
+
+    weighted_score = 0.0
+
+    for criterion in criteria:
+        score = criterion_scores[str(criterion.id)]
+        percentage = score / criterion.max_score
+        weighted_score += percentage * criterion.weight
+
+    return round(weighted_score, 2)
 
 
 async def create_evaluation(
@@ -17,16 +58,8 @@ async def create_evaluation(
     data: EvaluationCreate,
 ):
     # --------------------------------------------------------
-    # Look up the project/team FIRST so we know which hackathon
-    # this evaluation is actually for, then check for an active
-    # Judge row scoped to that exact hackathon.
-    #
-    # The previous version queried Judge by user_id alone (no
-    # hackathon filter) and called .scalar_one_or_none() - for any
-    # judge active across more than one hackathon (an explicitly
-    # supported scenario), that raises MultipleResultsFound and the
-    # evaluation crashes instead of being correctly authorized or
-    # rejected.
+    # Find the project first so authorization is scoped to the
+    # exact hackathon containing that project.
     # --------------------------------------------------------
 
     project_result = await db.execute(
@@ -54,13 +87,15 @@ async def create_evaluation(
     if team is None:
         return "TEAM_NOT_FOUND"
 
+    # --------------------------------------------------------
+    # Judge authorization is scoped to this hackathon.
+    # --------------------------------------------------------
+
     judge_result = await db.execute(
         select(Judge).where(
             Judge.user_id == user_id,
             Judge.hackathon_id == team.hackathon_id,
-            Judge.status.in_(
-                ["active", "accepted"]
-            ),
+            Judge.status.in_(["active", "accepted"]),
         )
     )
 
@@ -68,6 +103,10 @@ async def create_evaluation(
 
     if judge is None:
         return "NOT_A_JUDGE"
+
+    # --------------------------------------------------------
+    # Judges cannot evaluate their own team.
+    # --------------------------------------------------------
 
     from app.models.team_member import TeamMember
 
@@ -81,6 +120,10 @@ async def create_evaluation(
     if member_result.scalar_one_or_none():
         return "SELF_EVALUATION_NOT_ALLOWED"
 
+    # --------------------------------------------------------
+    # One evaluation per judge/project.
+    # --------------------------------------------------------
+
     existing_result = await db.execute(
         select(Evaluation).where(
             Evaluation.project_id == data.project_id,
@@ -91,6 +134,50 @@ async def create_evaluation(
     if existing_result.scalar_one_or_none():
         return "ALREADY_EVALUATED"
 
+    # --------------------------------------------------------
+    # Validate configurable criteria.
+    #
+    # Existing hackathons with no configured criteria continue
+    # using the legacy five score fields.
+    # --------------------------------------------------------
+
+    criteria = await _get_active_criteria(
+        db,
+        team.hackathon_id,
+    )
+
+    criterion_scores = data.criterion_scores or {}
+
+    if criteria:
+        required_keys = {str(c.id) for c in criteria}
+        submitted_keys = set(criterion_scores.keys())
+
+        if required_keys != submitted_keys:
+            return "INVALID_CRITERION_SCORES"
+
+        for criterion in criteria:
+            score = criterion_scores.get(str(criterion.id))
+
+            if not isinstance(score, int):
+                return "INVALID_CRITERION_SCORES"
+
+            if score < 0 or score > criterion.max_score:
+                return "CRITERION_SCORE_OUT_OF_RANGE"
+
+        total_weight = sum(c.weight for c in criteria)
+
+        if total_weight <= 0:
+            return "INVALID_CRITERIA_WEIGHTS"
+
+    elif criterion_scores:
+        # Do not accept arbitrary criterion IDs for a hackathon
+        # that has no configured criteria.
+        return "INVALID_CRITERION_SCORES"
+
+    # --------------------------------------------------------
+    # Persist both legacy scores and configurable scores.
+    # --------------------------------------------------------
+
     evaluation = Evaluation(
         project_id=data.project_id,
         judge_id=user_id,
@@ -99,6 +186,7 @@ async def create_evaluation(
         impact_score=data.impact_score,
         presentation_score=data.presentation_score,
         overall_score=data.overall_score,
+        criterion_scores=criterion_scores or None,
         feedback=data.feedback,
     )
 
@@ -171,6 +259,7 @@ async def get_project_score(
             "evaluation_count": 0,
             "average_score": 0,
             "total_score": 0,
+            "weighted_score": None,
         }
 
     average_score = (
@@ -186,6 +275,68 @@ async def get_project_score(
         2,
     )
 
+    # --------------------------------------------------------
+    # If configurable criteria exist, calculate the average
+    # normalized weighted score across submitted evaluations.
+    # --------------------------------------------------------
+
+    project_result = await db.execute(
+        select(Project).where(
+            Project.id == project_id
+        )
+    )
+
+    project = project_result.scalar_one_or_none()
+
+    weighted_score = None
+
+    if project is not None and project.hackathon_id is not None:
+        criteria = await _get_active_criteria(
+            db,
+            project.hackathon_id,
+        )
+
+        if criteria and all(
+            evaluation.criterion_scores
+            for evaluation in (
+                await db.execute(
+                    select(Evaluation).where(
+                        Evaluation.project_id == project_id
+                    )
+                )
+            ).scalars().all()
+        ):
+            scores_result = await db.execute(
+                select(Evaluation).where(
+                    Evaluation.project_id == project_id
+                )
+            )
+
+            evaluations = scores_result.scalars().all()
+
+            calculated_scores = []
+
+            for evaluation in evaluations:
+                if not evaluation.criterion_scores:
+                    continue
+
+                try:
+                    score = _calculate_weighted_score(
+                        criteria,
+                        evaluation.criterion_scores,
+                    )
+                except (KeyError, TypeError, ZeroDivisionError):
+                    score = None
+
+                if score is not None:
+                    calculated_scores.append(score)
+
+            if calculated_scores:
+                weighted_score = round(
+                    sum(calculated_scores) / len(calculated_scores),
+                    2,
+                )
+
     return {
         "evaluation_count": count,
         "average_score": average_score,
@@ -193,4 +344,5 @@ async def get_project_score(
             average_score * 10,
             2,
         ),
+        "weighted_score": weighted_score,
     }

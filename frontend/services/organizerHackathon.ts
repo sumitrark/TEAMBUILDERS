@@ -349,3 +349,84 @@ export async function getOrganizerProject(
 
   return response.data;
 }
+/* ============================================================
+   EVALUATION CRITERIA
+   ============================================================ */
+
+export interface EvaluationCriterion {
+  id: string;
+  hackathon_id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  max_score: number;
+  weight: number;
+  display_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluationCriterionCreate {
+  key: string;
+  name: string;
+  description?: string;
+  max_score: number;
+  weight: number;
+  display_order?: number;
+  is_active?: boolean;
+}
+
+export interface EvaluationCriterionUpdate {
+  key?: string;
+  name?: string;
+  description?: string | null;
+  max_score?: number;
+  weight?: number;
+  display_order?: number;
+  is_active?: boolean;
+}
+
+export async function getEvaluationCriteria(
+  hackathonId: string
+): Promise<EvaluationCriterion[]> {
+  const response = await api.get<EvaluationCriterion[]>(
+    `/organizer/hackathons/${hackathonId}/criteria`
+  );
+
+  return response.data;
+}
+
+export async function createEvaluationCriterion(
+  hackathonId: string,
+  data: EvaluationCriterionCreate
+): Promise<EvaluationCriterion> {
+  const response = await api.post<EvaluationCriterion>(
+    `/organizer/hackathons/${hackathonId}/criteria`,
+    data
+  );
+
+  return response.data;
+}
+
+export async function updateEvaluationCriterion(
+  criterionId: string,
+  data: EvaluationCriterionUpdate
+): Promise<EvaluationCriterion> {
+  const response = await api.patch<EvaluationCriterion>(
+    `/organizer/hackathons/criteria/${criterionId}`,
+    data
+  );
+
+  return response.data;
+}
+
+export async function deleteEvaluationCriterion(
+  criterionId: string
+): Promise<EvaluationCriterion> {
+  const response = await api.delete<EvaluationCriterion>(
+    `/organizer/hackathons/criteria/${criterionId}`
+  );
+
+  return response.data;
+}

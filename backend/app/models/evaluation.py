@@ -6,9 +6,8 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Text,
-    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -16,14 +15,6 @@ from app.db.base import Base
 
 class Evaluation(Base):
     __tablename__ = "evaluations"
-
-    __table_args__ = (
-        UniqueConstraint(
-            "project_id",
-            "judge_id",
-            name="uq_project_judge_evaluation",
-        ),
-    )
 
     id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -33,19 +24,13 @@ class Evaluation(Base):
 
     project_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            "projects.id",
-            ondelete="CASCADE",
-        ),
+        ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
     )
 
     judge_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            "users.id",
-            ondelete="CASCADE",
-        ),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -74,6 +59,11 @@ class Evaluation(Base):
         nullable=False,
     )
 
+    criterion_scores: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+
     feedback: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
@@ -93,5 +83,4 @@ class Evaluation(Base):
     )
 
     project = relationship("Project")
-
     judge = relationship("User")
