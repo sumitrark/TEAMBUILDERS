@@ -61,6 +61,29 @@ async def join(
         )
 
     # =====================================================
+    # Registration window enforcement (server-side, authoritative -
+    # a manipulated frontend request cannot bypass this)
+    # =====================================================
+
+    if participant == "REGISTRATION_NOT_OPEN":
+        raise HTTPException(
+            status_code=400,
+            detail="Registration has not started yet.",
+        )
+
+    if participant == "REGISTRATION_CLOSED":
+        raise HTTPException(
+            status_code=400,
+            detail="Registration is closed.",
+        )
+
+    if participant == "HACKATHON_ALREADY_STARTED":
+        raise HTTPException(
+            status_code=400,
+            detail="This hackathon has already started.",
+        )
+
+    # =====================================================
     # Schedule conflict
     # =====================================================
 

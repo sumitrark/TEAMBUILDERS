@@ -78,3 +78,33 @@ export async function deleteProject(
 
   return res.data;
 }
+
+export interface SubmissionInfo {
+  id: string;
+  version_number: number;
+  submitted_at: string;
+  status: string;
+}
+
+export interface ProjectSubmissionStatus {
+  project_id: string;
+  status: string;
+  latest_submission: SubmissionInfo | null;
+  submission_count: number;
+  can_edit: boolean;
+  can_submit: boolean;
+}
+
+export async function submitProject(
+  projectId: string
+): Promise<SubmissionInfo> {
+  const res = await api.post(`/projects/${projectId}/submit`);
+  return res.data;
+}
+
+export async function getSubmissionStatus(
+  projectId: string
+): Promise<ProjectSubmissionStatus> {
+  const res = await api.get(`/projects/${projectId}/submission`);
+  return res.data;
+}

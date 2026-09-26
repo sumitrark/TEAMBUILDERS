@@ -38,7 +38,7 @@ export default function EditHackathonPage() {
     field: string,
     value: string | number
   ) {
-    setForm((prev: any) => ({
+    setForm((prev: Partial<Hackathon>) => ({
       ...prev,
       [field]: value,
     }));

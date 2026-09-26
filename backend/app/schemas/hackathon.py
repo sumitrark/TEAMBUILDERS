@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class HackathonCreate(BaseModel):
@@ -27,8 +27,47 @@ class HackathonCreate(BaseModel):
     start_date: date
     end_date: date
 
+    # Precise, timezone-aware lifecycle timestamps (optional - when
+    # omitted, lifecycle status falls back to the date fields above
+    # at day boundaries). New organizer UIs should always send these.
+    registration_start: datetime | None = None
+    registration_end: datetime | None = None
+    hackathon_start: datetime | None = None
+    hackathon_end: datetime | None = None
+
     banner_image: str = ""
     website: str = ""
+
+    @model_validator(mode="after")
+    def validate_lifecycle_ordering(self):
+        if (
+            self.registration_start
+            and self.registration_end
+            and self.registration_start >= self.registration_end
+        ):
+            raise ValueError(
+                "registration_start must be before registration_end"
+            )
+
+        if (
+            self.registration_end
+            and self.hackathon_start
+            and self.registration_end > self.hackathon_start
+        ):
+            raise ValueError(
+                "registration_end must be at or before hackathon_start"
+            )
+
+        if (
+            self.hackathon_start
+            and self.hackathon_end
+            and self.hackathon_start >= self.hackathon_end
+        ):
+            raise ValueError(
+                "hackathon_start must be before hackathon_end"
+            )
+
+        return self
 
 
 class HackathonUpdate(BaseModel):
@@ -77,11 +116,22 @@ class HackathonResponse(BaseModel):
     start_date: date
     end_date: date
 
+    registration_start: datetime | None = None
+    registration_end: datetime | None = None
+    hackathon_start: datetime | None = None
+    hackathon_end: datetime | None = None
+
     banner_image: str
     website: str
 
     status: str
     is_active: bool
+
+    # Authoritative, server-computed lifecycle status - populated by
+    # the route, not stored on the model. Optional so this schema
+    # still works for any endpoint that hasn't been updated to
+    # compute it yet.
+    lifecycle_status: str | None = None
 
     model_config = ConfigDict(
         from_attributes=True

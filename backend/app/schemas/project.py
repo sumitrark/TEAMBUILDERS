@@ -27,6 +27,7 @@ class ProjectResponse(BaseModel):
     owner_id: UUID
     team_id: UUID | None
     ai_tools_used: str | None
+    status: str
     created_at: datetime
 
     model_config = ConfigDict(

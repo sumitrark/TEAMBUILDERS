@@ -121,12 +121,38 @@ async def update_project(
     if project is None:
         return None
 
+    if project.status in ("LOCKED", "UNDER_REVIEW", "EVALUATED", "WINNER"):
+        return "PROJECT_LOCKED"
+
+    # Server-side deadline enforcement: once the hackathon has
+    # finished, ordinary edits are blocked even if the project's own
+    # status hasn't been explicitly locked yet.
+    if project.team_id:
+        from app.models.team import Team
+        from app.models.hackathon import Hackathon
+        from app.services.hackathon_lifecycle import is_hackathon_finished
+
+        team_result = await db.execute(
+            select(Team).where(Team.id == project.team_id)
+        )
+        team = team_result.scalar_one_or_none()
+
+        if team and team.hackathon_id:
+            hackathon_result = await db.execute(
+                select(Hackathon).where(Hackathon.id == team.hackathon_id)
+            )
+            hackathon = hackathon_result.scalar_one_or_none()
+
+            if hackathon and is_hackathon_finished(hackathon):
+                return "HACKATHON_FINISHED"
+
     project.title = data.title
     project.description = data.description
     project.tech_stack = data.tech_stack
     project.github_url = data.github_url
     project.demo_url = data.demo_url
     project.team_id = data.team_id
+    project.ai_tools_used = data.ai_tools_used
 
     await db.commit()
     await db.refresh(project)

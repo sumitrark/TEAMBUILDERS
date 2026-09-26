@@ -13,6 +13,7 @@ from app.db.database import get_db
 from app.dependencies.organizer import (
     get_current_organizer,
 )
+from app.dependencies.current_user import get_current_user
 
 from app.schemas.hackathon import (
     HackathonCreate,
@@ -47,7 +48,76 @@ router = APIRouter(
 async def all_hackathons(
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_all_hackathons(db)
+    from app.services.hackathon_lifecycle import get_hackathon_status
+
+    hackathons = await get_all_hackathons(db)
+
+    for h in hackathons:
+        h.lifecycle_status = get_hackathon_status(h)
+
+    return hackathons
+
+
+@router.get(
+    "/{hackathon_id}/status",
+)
+async def hackathon_status(
+    hackathon_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.hackathon_lifecycle import (
+        get_hackathon_status,
+        get_time_remaining_seconds,
+    )
+    from datetime import datetime, timezone
+
+    hackathon = await get_hackathon(db, hackathon_id)
+
+    if hackathon is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Hackathon not found",
+        )
+
+    status_value = get_hackathon_status(hackathon)
+
+    return {
+        "hackathon_id": hackathon.id,
+        "status": status_value,
+        "server_time": datetime.now(timezone.utc),
+        "seconds_remaining": get_time_remaining_seconds(hackathon),
+    }
+
+
+@router.get(
+    "/{hackathon_id}/workspace",
+)
+async def hackathon_workspace(
+    hackathon_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    from app.crud.workspace import get_workspace
+
+    result = await get_workspace(
+        db=db,
+        user_id=current_user.id,
+        hackathon_id=hackathon_id,
+    )
+
+    if result == "HACKATHON_NOT_FOUND":
+        raise HTTPException(
+            status_code=404,
+            detail="Hackathon not found",
+        )
+
+    if result == "NOT_REGISTERED":
+        raise HTTPException(
+            status_code=403,
+            detail="You are not registered for this hackathon",
+        )
+
+    return result
 
 
 @router.get(
@@ -68,6 +138,10 @@ async def single_hackathon(
             status_code=404,
             detail="Hackathon not found",
         )
+
+    from app.services.hackathon_lifecycle import get_hackathon_status
+
+    hackathon.lifecycle_status = get_hackathon_status(hackathon)
 
     return hackathon
 

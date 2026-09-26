@@ -86,6 +86,38 @@ class Hackathon(Base):
     )
 
     # =====================================================
+    # PRECISE LIFECYCLE TIMESTAMPS
+    #
+    # Additive, alongside the legacy date-only columns above rather
+    # than replacing them - existing schemas/CRUD/frontend forms
+    # still read those directly, and a full rename is a separate,
+    # larger cleanup. Nullable for backward compatibility with any
+    # write path that hasn't been updated to populate them yet;
+    # lifecycle status calculation falls back to the legacy date
+    # fields when these are unset (see services/hackathon_lifecycle.py).
+    # =====================================================
+
+    registration_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    registration_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    hackathon_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    hackathon_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # =====================================================
     # MEDIA
     # =====================================================
 

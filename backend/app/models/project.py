@@ -63,6 +63,13 @@ class Project(Base):
         nullable=True,
     )
 
+    # DRAFT | SUBMITTED | LOCKED | UNDER_REVIEW | EVALUATED | WINNER
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="DRAFT",
+        nullable=False,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
