@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { Camera, AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
@@ -8,11 +8,6 @@ import {
   getMyProctoringStatus,
 } from "@/services/proctoring";
 
-// The browser's built-in FaceDetector API has very limited, mostly
-// experimental support (largely absent on desktop Safari/Firefox,
-// and gated behind flags in some Chrome versions). We feature-detect
-// it rather than assume it's there, and never claim to be doing
-// "AI face verification" when we can't actually run it.
 declare global {
   interface Window {
     FaceDetector?: new () => {
@@ -22,7 +17,7 @@ declare global {
 }
 
 const SNAPSHOT_MAX_DIMENSION = 240;
-const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 export default function ProctoringCheckIn({
   hackathonId,
@@ -31,9 +26,9 @@ export default function ProctoringCheckIn({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const detectorRef = useRef<InstanceType<
-    NonNullable<typeof window.FaceDetector>
-  > | null>(null);
+  const detectorRef = useRef<{
+    detect: (source: CanvasImageSource) => Promise<unknown[]>;
+  } | null>(null);
 
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState("");
@@ -52,6 +47,7 @@ export default function ProctoringCheckIn({
         detectorRef.current = new window.FaceDetector();
         setDetectionSupported(true);
       } catch {
+        detectorRef.current = null;
         setDetectionSupported(false);
       }
     }
@@ -65,9 +61,7 @@ export default function ProctoringCheckIn({
   }, [hackathonId]);
 
   useEffect(() => {
-    if (!cameraOn) {
-      return;
-    }
+    if (!cameraOn) return;
 
     const interval = setInterval(() => {
       captureAndSubmit("periodic_snapshot");
@@ -86,11 +80,23 @@ export default function ProctoringCheckIn({
   }
 
   async function startCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError(
+        "Your browser does not support camera access. Please use a modern browser."
+      );
+      return;
+    }
+
     try {
       setCameraError("");
+      setLastMessage("");
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 320, height: 240 },
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: "user",
+        },
         audio: false,
       });
 
@@ -98,28 +104,46 @@ export default function ProctoringCheckIn({
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => undefined);
       }
 
       setCameraOn(true);
+
+      // Perform the first verification immediately instead of waiting
+      // for the participant to press "Check In Now".
+      setTimeout(() => {
+        captureAndSubmit("check_in");
+      }, 800);
     } catch (err) {
       console.error("Failed to access camera:", err);
       setCameraError(
-        "Couldn't access your camera. Check your browser's camera " +
-          "permission and try again."
+        "Couldn't access your camera. Check your browser's camera permission and try again."
       );
+      setCameraOn(false);
     }
   }
 
   function stopCamera() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
     setCameraOn(false);
   }
 
   async function captureAndSubmit(
     eventType: "check_in" | "periodic_snapshot"
   ) {
-    if (!videoRef.current) {
+    const video = videoRef.current;
+
+    if (!video || !streamRef.current || !cameraOn) {
+      return;
+    }
+
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
       return;
     }
 
@@ -131,8 +155,13 @@ export default function ProctoringCheckIn({
       canvas.height = SNAPSHOT_MAX_DIMENSION;
 
       const ctx = canvas.getContext("2d");
-      ctx?.drawImage(
-        videoRef.current,
+
+      if (!ctx) {
+        return;
+      }
+
+      ctx.drawImage(
+        video,
         0,
         0,
         SNAPSHOT_MAX_DIMENSION,
@@ -141,9 +170,9 @@ export default function ProctoringCheckIn({
 
       const snapshotDataUrl = canvas.toDataURL("image/jpeg", 0.5);
 
-      // Only claim a face-detection result when the browser actually
-      // supports running it. Otherwise this is purely a "camera is
-      // on and streaming" check-in, not a face-presence claim.
+      // Face detection is only reported when the browser can actually
+      // perform it. Camera availability alone is never presented as
+      // proof of identity.
       let faceDetected = true;
 
       if (detectionSupported && detectorRef.current) {
@@ -151,9 +180,7 @@ export default function ProctoringCheckIn({
           const faces = await detectorRef.current.detect(canvas);
           faceDetected = faces.length > 0;
         } catch {
-          // Detection call failed at runtime despite being
-          // "supported" - don't penalize the participant for a
-          // browser API failure.
+          // Browser detection failures should not create a false strike.
           faceDetected = true;
         }
       }
@@ -169,6 +196,9 @@ export default function ProctoringCheckIn({
       await loadStatus();
     } catch (err) {
       console.error("Failed to submit proctoring event:", err);
+      setLastMessage(
+        "The check-in could not be submitted. You can try again."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -180,23 +210,31 @@ export default function ProctoringCheckIn({
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100">
           <Camera className="h-5 w-5 text-violet-600" />
         </div>
+
         <div>
           <p className="font-semibold text-slate-900">
-            Presence Check-in
+            Live Presence Verification
           </p>
           <p className="text-sm text-slate-500">
-            Confirms you're present during this virtual hackathon.
+            Your camera helps confirm that you are present during the
+            competition.
           </p>
         </div>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+        Camera checks use occasional snapshots rather than continuous video
+        recording. Camera presence does not by itself verify your legal
+        identity.
       </div>
 
       {!detectionSupported && cameraOn && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Your browser doesn't support automatic face detection.
-            Check-ins will confirm your camera is active, not your
-            face specifically.
+            Automatic face detection is unavailable in this browser.
+            Check-ins will confirm camera activity, but will not make a
+            face-presence determination.
           </span>
         </div>
       )}
@@ -211,10 +249,9 @@ export default function ProctoringCheckIn({
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            You've been flagged for organizer review after
-            {" "}{status.strike_count} check-ins without a visible
-            camera feed. This doesn't remove you - an organizer will
-            review it.
+            Your session has been flagged for organizer review after{" "}
+            {status.strike_count} checks without a visible camera feed.
+            This does not automatically remove you from the hackathon.
           </span>
         </div>
       )}
@@ -225,22 +262,25 @@ export default function ProctoringCheckIn({
           autoPlay
           playsInline
           muted
-          className={`h-48 w-full object-cover ${
+          className={`h-56 w-full object-cover ${
             cameraOn ? "block" : "hidden"
           }`}
         />
 
         {!cameraOn && (
-          <div className="flex h-48 items-center justify-center text-sm text-slate-400">
+          <div className="flex h-56 items-center justify-center text-sm text-slate-400">
             Camera is off
           </div>
         )}
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-4">
         {status && (
           <p className="text-sm text-slate-500">
-            {status.strike_count}/{status.strike_threshold} flags
+            Review flags:{" "}
+            <span className="font-semibold">
+              {status.strike_count}/{status.strike_threshold}
+            </span>
           </p>
         )}
 
@@ -252,7 +292,7 @@ export default function ProctoringCheckIn({
         )}
       </div>
 
-      <div className="mt-4 flex gap-3">
+      <div className="flex gap-3">
         {!cameraOn ? (
           <button
             type="button"
@@ -269,7 +309,7 @@ export default function ProctoringCheckIn({
               disabled={submitting}
               className="flex-1 rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
             >
-              {submitting ? "Checking in..." : "Check In Now"}
+              {submitting ? "Checking..." : "Check In Now"}
             </button>
 
             <button

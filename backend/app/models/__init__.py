@@ -22,3 +22,5 @@ from app.models.judge_invitation import JudgeInvitation
 from app.models.proctoring_event import ProctoringEvent
 from app.models.submission import Submission
 from app.models.evaluation_criterion import EvaluationCriterion
+
+from app.models.identity_verification import IdentityVerification

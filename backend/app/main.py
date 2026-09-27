@@ -165,3 +165,10 @@ app.include_router(payments_router, prefix="/api/v1")
 app.include_router(proctoring_router, prefix="/api/v1")
 
 
+
+from app.api.routes.identity_verification import router as identity_verification_router
+
+app.include_router(
+    identity_verification_router,
+    prefix="/api/v1",
+)
