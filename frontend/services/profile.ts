@@ -47,3 +47,28 @@ export async function updateProfile(
   const res = await api.put("/profile", data);
   return res.data;
 }
+
+export interface FaceReferencePhoto {
+  user_id: string;
+  photo_data_url: string;
+  updated_at: string;
+}
+
+export async function getFaceReferencePhoto(): Promise<FaceReferencePhoto | null> {
+  const res = await api.get("/profile/face-reference");
+  return res.data;
+}
+
+export async function saveFaceReferencePhoto(
+  photoDataUrl: string
+): Promise<FaceReferencePhoto> {
+  const res = await api.put("/profile/face-reference", {
+    photo_data_url: photoDataUrl,
+  });
+
+  return res.data;
+}
+
+export async function deleteFaceReferencePhoto(): Promise<void> {
+  await api.delete("/profile/face-reference");
+}

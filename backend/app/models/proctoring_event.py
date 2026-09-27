@@ -1,12 +1,12 @@
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-
+from sqlalchemy import Float, String
 # Hard cap on stored snapshot size (a base64 data URL). This is a
 # lightweight presence log for organizer review, not a video
 # recording system - snapshots are small, compressed JPEG thumbnails.
@@ -57,7 +57,15 @@ class ProctoringEvent(Base):
         Boolean,
         nullable=False,
     )
+    face_match_status: Mapped[str | None] = mapped_column(
+    String(20),
+    nullable=True,
+    )
 
+    face_similarity: Mapped[float | None] = mapped_column(
+    Float,
+    nullable=True,
+)
     # A base64 data URL (e.g. "data:image/jpeg;base64,..."), capped
     # in size at the API layer. Nullable so a client can report a
     # detection result without necessarily attaching a frame.

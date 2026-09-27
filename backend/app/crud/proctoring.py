@@ -39,6 +39,8 @@ async def record_event(
     event_type: str,
     face_detected: bool,
     snapshot_data_url: str | None,
+    face_match_status: str | None = None,
+    face_similarity: float | None = None,
 ):
     participant = await get_participant(db, user_id, hackathon_id)
 
@@ -46,12 +48,14 @@ async def record_event(
         return "NOT_PARTICIPANT"
 
     event = ProctoringEvent(
-        hackathon_id=hackathon_id,
-        user_id=user_id,
-        event_type=event_type,
-        face_detected=face_detected,
-        snapshot_data_url=snapshot_data_url,
-    )
+    hackathon_id=hackathon_id,
+    user_id=user_id,
+    event_type=event_type,
+    face_detected=face_detected,
+    snapshot_data_url=snapshot_data_url,
+    face_match_status=face_match_status,
+    face_similarity=face_similarity,
+)
 
     db.add(event)
 

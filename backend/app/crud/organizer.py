@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.hackathon import Hackathon
 from app.models.participant import Participant
 from app.models.team import Team
+from app.models.team_hackathon import TeamHackathon
+from app.models.team_member import TeamMember
 from app.models.project import Project
 from app.models.judge import Judge
 from app.models.user import User
@@ -538,6 +540,7 @@ async def get_organizer_participants(
     if hackathon is None:
         return None
 
+    # Start with explicit Participant records.
     result = await db.execute(
         select(Participant, User)
         .join(
@@ -552,8 +555,8 @@ async def get_organizer_participants(
 
     rows = result.all()
 
-    return [
-        {
+    participants_by_user = {
+        participant.user_id: {
             "id": participant.id,
             "user_id": participant.user_id,
             "name": user.full_name,
@@ -566,7 +569,67 @@ async def get_organizer_participants(
             "team_id": participant.team_id,
         }
         for participant, user in rows
-    ]
+    }
+
+    # Also include members of teams registered through TeamHackathon.
+    registration_result = await db.execute(
+        select(
+            TeamHackathon.team_id,
+            Team.owner_id,
+            TeamMember.user_id,
+        )
+        .join(
+            Team,
+            TeamHackathon.team_id == Team.id,
+        )
+        .outerjoin(
+            TeamMember,
+            TeamMember.team_id == Team.id,
+        )
+        .where(
+            TeamHackathon.hackathon_id == hackathon_id,
+            TeamHackathon.status == "registered",
+        )
+    )
+
+    registered_members = registration_result.all()
+
+    for team_id, owner_id, member_id in registered_members:
+        user_ids = {owner_id}
+        if member_id is not None:
+            user_ids.add(member_id)
+
+        for user_id in user_ids:
+            if user_id in participants_by_user:
+                if participants_by_user[user_id]["team_id"] is None:
+                    participants_by_user[user_id]["team_id"] = team_id
+                continue
+
+            user_result = await db.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+
+            if user is None:
+                continue
+
+            participants_by_user[user_id] = {
+                "id": user.id,
+                "user_id": user.id,
+                "name": user.full_name,
+                "username": user.username,
+                "email": user.email,
+                "college": user.college,
+                "course": user.course,
+                "year": user.year,
+                "status": "Joined",
+                "team_id": team_id,
+            }
+
+    return sorted(
+        participants_by_user.values(),
+        key=lambda participant: (participant["name"] or "").lower(),
+    )
 
 
 async def get_organizer_teams(
@@ -586,11 +649,22 @@ async def get_organizer_teams(
     if hackathon is None:
         return None
 
+    # TeamHackathon is the canonical hackathon registration relation.
+    # Team.hackathon_id is retained for legacy compatibility.
     result = await db.execute(
         select(Team)
-        .where(
-            Team.hackathon_id == hackathon_id
+        .outerjoin(
+            TeamHackathon,
+            TeamHackathon.team_id == Team.id,
         )
+        .where(
+            (Team.hackathon_id == hackathon_id)
+            | (
+                (TeamHackathon.hackathon_id == hackathon_id)
+                & (TeamHackathon.status == "registered")
+            )
+        )
+        .distinct()
         .order_by(Team.created_at.desc())
     )
 
@@ -599,23 +673,32 @@ async def get_organizer_teams(
     response = []
 
     for team in teams:
+        # Get members from both Participant and the actual team membership
+        # table so older registrations remain visible.
         member_result = await db.execute(
-            select(
-                User.id,
-                User.full_name,
-                User.username,
-                User.email,
-            )
+            select(User)
             .join(
-                Participant,
-                Participant.user_id == User.id,
+                TeamMember,
+                TeamMember.user_id == User.id,
             )
             .where(
-                Participant.team_id == team.id
+                TeamMember.team_id == team.id
             )
         )
 
-        members = member_result.all()
+        members = {
+            member.id: member
+            for member in member_result.scalars().all()
+        }
+
+        # Team owner is also a registered team member.
+        if team.owner_id not in members:
+            owner_result = await db.execute(
+                select(User).where(User.id == team.owner_id)
+            )
+            owner = owner_result.scalar_one_or_none()
+            if owner is not None:
+                members[owner.id] = owner
 
         response.append(
             {
@@ -624,7 +707,7 @@ async def get_organizer_teams(
                 "description": team.description,
                 "max_members": team.max_members,
                 "owner_id": team.owner_id,
-                "hackathon_id": team.hackathon_id,
+                "hackathon_id": hackathon_id,
                 "members": [
                     {
                         "id": member.id,
@@ -632,12 +715,13 @@ async def get_organizer_teams(
                         "username": member.username,
                         "email": member.email,
                     }
-                    for member in members
+                    for member in members.values()
                 ],
             }
         )
 
     return response
+
 
 async def get_organizer_analytics(
     db: AsyncSession,

@@ -17,13 +17,23 @@ export async function submitProctoringEvent(
   hackathonId: string,
   eventType: "check_in" | "periodic_snapshot",
   faceDetected: boolean,
-  snapshotDataUrl: string | null
+  snapshotDataUrl: string | null,
+  faceMatchStatus:
+    | "MATCH"
+    | "MISMATCH"
+    | "NO_FACE"
+    | "MULTIPLE_FACES"
+    | "UNAVAILABLE"
+    | null = null,
+  faceSimilarity: number | null = null
 ): Promise<ProctoringEventResult> {
   const response = await api.post("/proctoring/events", {
     hackathon_id: hackathonId,
     event_type: eventType,
     face_detected: faceDetected,
     snapshot_data_url: snapshotDataUrl,
+    face_match_status: faceMatchStatus,
+    face_similarity: faceSimilarity,
   });
 
   return response.data;
@@ -81,6 +91,37 @@ export async function disqualifyParticipant(
 ) {
   const response = await api.post(
     `/proctoring/hackathons/${hackathonId}/flagged/${userId}/disqualify`
+  );
+
+  return response.data;
+}
+
+export interface ProctoringMonitorEvent {
+  id: string;
+  event_type: string;
+  face_detected: boolean;
+  snapshot_data_url: string | null;
+  created_at: string;
+}
+
+export interface ProctoringMonitorParticipant {
+  user_id: string;
+  full_name: string;
+  email: string;
+  team_id: string | null;
+  identity_status: string;
+  strike_count: number;
+  flagged_for_review: boolean;
+  last_check_at: string | null;
+  last_face_detected: boolean | null;
+  recent_events: ProctoringMonitorEvent[];
+}
+
+export async function getProctoringMonitor(
+  hackathonId: string
+): Promise<ProctoringMonitorParticipant[]> {
+  const response = await api.get(
+    `/proctoring/hackathons/${hackathonId}/monitor`
   );
 
   return response.data;

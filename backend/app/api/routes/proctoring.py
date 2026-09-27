@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.dependencies.current_user import get_current_user
 from app.dependencies.organizer import get_current_organizer
-
+from app.models.face_reference_photo import FaceReferencePhoto
 from app.crud.participant import get_participant
 from app.crud.notification import create_notification
 from app.crud.proctoring import (
@@ -18,6 +18,10 @@ from app.crud.proctoring import (
     record_event,
 )
 from app.models.hackathon import Hackathon
+from app.models.identity_verification import IdentityVerification
+from app.models.participant import Participant
+from app.models.proctoring_event import ProctoringEvent
+from app.models.user import User
 from sqlalchemy import select
 
 from app.schemas.proctoring import (
@@ -25,6 +29,7 @@ from app.schemas.proctoring import (
     MyProctoringStatusResponse,
     ProctoringEventCreate,
     ProctoringEventResponse,
+    ProctoringMonitorParticipantResponse,
 )
 
 router = APIRouter(
@@ -52,14 +57,35 @@ async def submit_event(
             detail="You are not registered for this hackathon",
         )
 
+    # A camera check confirms current presence only after the registered
+    # participant has completed the identity-verification step.
+    if payload.event_type == "check_in":
+        verification_result = await db.execute(
+            select(IdentityVerification).where(
+                IdentityVerification.participant_id == participant.id
+            )
+        )
+        verification = verification_result.scalar_one_or_none()
+
+        if verification is None or verification.status != "VERIFIED":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Identity verification is required before camera "
+                    "presence verification."
+                ),
+            )
+
     result = await record_event(
-        db,
-        user_id=current_user.id,
-        hackathon_id=payload.hackathon_id,
-        event_type=payload.event_type,
-        face_detected=payload.face_detected,
-        snapshot_data_url=payload.snapshot_data_url,
-    )
+    db,
+    user_id=current_user.id,
+    hackathon_id=payload.hackathon_id,
+    event_type=payload.event_type,
+    face_detected=payload.face_detected,
+    snapshot_data_url=payload.snapshot_data_url,
+    face_match_status=payload.face_match_status,
+    face_similarity=payload.face_similarity,
+)
 
     # Note: record_event() already creates the "flagged for review"
     # notification internally when the strike threshold is crossed -
@@ -126,6 +152,90 @@ async def flagged_participants(
         )
 
     return await get_flagged_participants(db, hackathon_id)
+
+
+@router.get(
+    "/hackathons/{hackathon_id}/monitor",
+    response_model=list[ProctoringMonitorParticipantResponse],
+)
+async def proctoring_monitor(
+    hackathon_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_organizer),
+):
+    # Verify organizer ownership.
+    result = await db.execute(
+        select(Hackathon).where(
+            Hackathon.id == hackathon_id,
+            Hackathon.organizer_id == current_user.id,
+        )
+    )
+
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found or you do not own it",
+        )
+
+    result = await db.execute(
+        select(
+            Participant,
+            User,
+            IdentityVerification.status,
+        )
+        .join(User, Participant.user_id == User.id)
+        .outerjoin(
+            IdentityVerification,
+            IdentityVerification.participant_id == Participant.id,
+        )
+        .where(Participant.hackathon_id == hackathon_id)
+        .order_by(User.full_name)
+    )
+
+    rows = result.all()
+    response = []
+
+    for participant, user, identity_status in rows:
+        events_result = await db.execute(
+            select(ProctoringEvent)
+            .where(
+                ProctoringEvent.hackathon_id == hackathon_id,
+                ProctoringEvent.user_id == user.id,
+            )
+            .order_by(ProctoringEvent.created_at.desc())
+            .limit(10)
+        )
+
+        events = events_result.scalars().all()
+        latest = events[0] if events else None
+
+        response.append(
+            {
+                "user_id": user.id,
+                "full_name": user.full_name,
+                "email": user.email,
+                "team_id": participant.team_id,
+                "identity_status": identity_status or "PENDING",
+                "strike_count": participant.proctoring_strikes,
+                "flagged_for_review": participant.flagged_for_review,
+                "last_check_at": latest.created_at if latest else None,
+                "last_face_detected": (
+                    latest.face_detected if latest else None
+                ),
+                "recent_events": [
+                    {
+                        "id": event.id,
+                        "event_type": event.event_type,
+                        "face_detected": event.face_detected,
+                        "snapshot_data_url": event.snapshot_data_url,
+                        "created_at": event.created_at,
+                    }
+                    for event in events
+                ],
+            }
+        )
+
+    return response
 
 
 @router.post("/hackathons/{hackathon_id}/flagged/{user_id}/dismiss")

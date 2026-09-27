@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.team_member import TeamMember
+from app.models.participant import Participant
 from app.models.team_hackathon import TeamHackathon
 from app.models.hackathon import Hackathon
 from app.models.team import Team
@@ -304,6 +305,34 @@ async def register_team_for_hackathon(
     )
 
     db.add(registration)
+
+    # Synchronize registered team members into the per-hackathon
+    # participant records used by organizer and participant workflows.
+    for member_id in member_ids:
+        result = await db.execute(
+            select(Participant).where(
+                Participant.user_id == member_id,
+                Participant.hackathon_id == hackathon_id,
+            )
+        )
+        participant = result.scalar_one_or_none()
+
+        if participant is None:
+            db.add(
+                Participant(
+                    user_id=member_id,
+                    hackathon_id=hackathon_id,
+                    team_id=team_id,
+                    status="Joined",
+                )
+            )
+        else:
+            participant.team_id = team_id
+            participant.status = "Joined"
+
+    # Keep the legacy field synchronized with the canonical
+    # TeamHackathon registration.
+    team.hackathon_id = hackathon_id
 
     await db.commit()
 
