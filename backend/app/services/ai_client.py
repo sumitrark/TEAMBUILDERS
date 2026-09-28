@@ -110,3 +110,4 @@ async def generate_json(
         raise AIServiceError(
             "AI provider returned an unexpected response format."
         ) from exc
+

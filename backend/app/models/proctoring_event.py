@@ -82,3 +82,4 @@ class ProctoringEvent(Base):
 
     hackathon = relationship("Hackathon")
     user = relationship("User")
+

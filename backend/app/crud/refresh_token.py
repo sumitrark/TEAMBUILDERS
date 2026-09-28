@@ -69,3 +69,4 @@ async def revoke_all_refresh_tokens_for_user(
         record.revoked_at = now
 
     await db.commit()
+

@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -13,3 +13,4 @@ class IdentityVerificationResponse(BaseModel):
     expires_at: datetime | None
 
     model_config = {"from_attributes": True}
+

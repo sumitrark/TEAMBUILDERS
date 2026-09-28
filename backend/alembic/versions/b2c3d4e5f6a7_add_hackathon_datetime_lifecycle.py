@@ -74,3 +74,4 @@ def downgrade() -> None:
     op.drop_column("hackathons", "hackathon_start")
     op.drop_column("hackathons", "registration_end")
     op.drop_column("hackathons", "registration_start")
+

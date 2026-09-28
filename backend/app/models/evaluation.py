@@ -84,3 +84,4 @@ class Evaluation(Base):
 
     project = relationship("Project")
     judge = relationship("User")
+

@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -165,3 +165,4 @@ async def delete_face_reference_photo(
     if existing:
         await db.delete(existing)
         await db.commit()
+

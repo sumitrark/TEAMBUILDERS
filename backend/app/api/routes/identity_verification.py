@@ -1,4 +1,4 @@
-﻿from uuid import UUID
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,3 +66,4 @@ async def start_identity_verification(
         )
 
     return await verify_identity(db, participant)
+

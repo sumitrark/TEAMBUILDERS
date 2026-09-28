@@ -49,3 +49,4 @@ class MyJudgeInvitationResponse(BaseModel):
     status: str
     created_at: datetime
     expires_at: datetime
+

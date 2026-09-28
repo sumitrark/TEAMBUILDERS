@@ -90,3 +90,4 @@ async def mark_verified(
     record.verified_at = verified_at
 
     await db.commit()
+

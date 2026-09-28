@@ -217,3 +217,4 @@ async def delete_criterion(
         )
 
     return result
+

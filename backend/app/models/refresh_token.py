@@ -61,3 +61,4 @@ class RefreshToken(Base):
         String(64),
         nullable=True,
     )
+

@@ -1045,3 +1045,4 @@ async def get_organizer_project(
 
     return project_result.scalar_one_or_none()
 
+

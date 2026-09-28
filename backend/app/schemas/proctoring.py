@@ -1,4 +1,4 @@
-﻿from uuid import UUID
+from uuid import UUID
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -67,3 +67,4 @@ class ProctoringMonitorParticipantResponse(BaseModel):
     last_check_at: datetime | None
     last_face_detected: bool | None
     recent_events: list[ProctoringMonitorEvent]
+

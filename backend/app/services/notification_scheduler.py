@@ -138,3 +138,4 @@ async def dispatch_hackathon_reminders(db: AsyncSession) -> dict:
     await db.commit()
 
     return sent_counts
+

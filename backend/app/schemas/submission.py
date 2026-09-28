@@ -30,3 +30,4 @@ class ProjectStatusResponse(BaseModel):
     submission_count: int
     can_edit: bool
     can_submit: bool
+

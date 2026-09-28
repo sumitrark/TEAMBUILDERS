@@ -106,3 +106,4 @@ def downgrade() -> None:
     op.drop_column("users", "stripe_customer_id")
     op.drop_column("users", "subscription_status")
     op.drop_column("users", "subscription_plan")
+

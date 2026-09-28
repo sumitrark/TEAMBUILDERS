@@ -148,3 +148,4 @@ async def verify_otp(
     await db.commit()
 
     return {"message": "Mobile number verified successfully"}
+

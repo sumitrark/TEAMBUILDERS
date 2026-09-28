@@ -95,3 +95,4 @@ def downgrade() -> None:
         "ix_judge_invitations_hackathon_id", table_name="judge_invitations"
     )
     op.drop_table("judge_invitations")
+

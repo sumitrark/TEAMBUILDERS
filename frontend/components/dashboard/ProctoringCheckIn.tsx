@@ -14,6 +14,10 @@ import {
 } from "@/services/proctoring";
 import { getFaceReferencePhoto } from "@/services/profile";
 import {
+  getIdentityVerification,
+  startIdentityVerification,
+} from "@/services/identityVerification";
+import {
   compareVideoFace,
   getReferenceEmbedding,
 } from "@/services/faceMatching";
@@ -30,6 +34,12 @@ type FaceMatchStatus =
   | "UNAVAILABLE"
   | null;
 
+type IdentityStatus =
+  | "PENDING"
+  | "VERIFIED"
+  | "FAILED"
+  | "EXPIRED";
+
 const SNAPSHOT_MAX_DIMENSION = 240;
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -44,11 +54,16 @@ export default function ProctoringCheckIn({
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [referenceReady, setReferenceReady] = useState(false);
+  const [identityStatus, setIdentityStatus] =
+    useState<IdentityStatus>("PENDING");
+  const [identityLoading, setIdentityLoading] = useState(true);
+
   const [status, setStatus] = useState({
     strike_count: 0,
     strike_threshold: 3,
     flagged_for_review: false,
   });
+
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [faceMatchStatus, setFaceMatchStatus] =
@@ -78,14 +93,44 @@ export default function ProctoringCheckIn({
 
     async function loadInitialState() {
       try {
-        const [proctoringStatus, reference] = await Promise.all([
-          getMyProctoringStatus(hackathonId),
-          getFaceReferencePhoto(),
-        ]);
+        const [proctoringStatus, reference, verification] =
+          await Promise.all([
+            getMyProctoringStatus(hackathonId),
+            getFaceReferencePhoto(),
+            getIdentityVerification(hackathonId),
+          ]);
 
         if (!mounted) return;
 
         setStatus(proctoringStatus);
+        setIdentityStatus(verification.status);
+
+        if (verification.status !== "VERIFIED") {
+          try {
+            const verified = await startIdentityVerification(hackathonId);
+
+            if (!mounted) return;
+
+            setIdentityStatus(verified.status);
+
+            if (verified.status !== "VERIFIED") {
+              setCameraError(
+                "Identity verification could not be completed. Please try again."
+              );
+              return;
+            }
+          } catch (error) {
+            console.error("Identity verification failed", error);
+
+            if (mounted) {
+              setCameraError(
+                "Identity verification could not be completed. Please try again."
+              );
+            }
+
+            return;
+          }
+        }
 
         if (!reference?.photo_data_url) {
           setCameraError(
@@ -122,8 +167,12 @@ export default function ProctoringCheckIn({
 
         if (mounted) {
           setCameraError(
-            "Unable to load proctoring status. Please try again."
+            "Unable to load proctoring and identity status. Please try again."
           );
+        }
+      } finally {
+        if (mounted) {
+          setIdentityLoading(false);
         }
       }
     }
@@ -163,12 +212,12 @@ export default function ProctoringCheckIn({
 
         const sourceWidth = video.videoWidth || 640;
         const sourceHeight = video.videoHeight || 480;
-        const scale =
-          Math.min(
-            SNAPSHOT_MAX_DIMENSION / sourceWidth,
-            SNAPSHOT_MAX_DIMENSION / sourceHeight,
-            1
-          );
+
+        const scale = Math.min(
+          SNAPSHOT_MAX_DIMENSION / sourceWidth,
+          SNAPSHOT_MAX_DIMENSION / sourceHeight,
+          1
+        );
 
         canvas.width = Math.max(1, Math.round(sourceWidth * scale));
         canvas.height = Math.max(1, Math.round(sourceHeight * scale));
@@ -202,7 +251,8 @@ export default function ProctoringCheckIn({
           ...current,
           strike_count: response.strike_count,
           flagged_for_review:
-            current.flagged_for_review || response.newly_flagged_for_review,
+            current.flagged_for_review ||
+            response.newly_flagged_for_review,
         }));
 
         if (result.status === "MATCH") {
@@ -218,9 +268,7 @@ export default function ProctoringCheckIn({
             "Face did not match the reference photo. This has been logged for review."
           );
         } else if (result.status === "NO_FACE") {
-          setLastMessage(
-            "No face detected. This has been logged."
-          );
+          setLastMessage("No face detected. This has been logged.");
         } else if (result.status === "MULTIPLE_FACES") {
           setLastMessage(
             "Multiple faces detected. This has been logged for review."
@@ -243,6 +291,13 @@ export default function ProctoringCheckIn({
   );
 
   const startCamera = useCallback(async () => {
+    if (identityStatus !== "VERIFIED") {
+      setCameraError(
+        "Complete identity verification before starting the camera check."
+      );
+      return;
+    }
+
     if (!referenceReady) {
       setCameraError(
         "Upload and save a Face Reference Photo before starting proctoring."
@@ -291,7 +346,12 @@ export default function ProctoringCheckIn({
         "Camera access was unavailable. Please allow camera access and try again."
       );
     }
-  }, [captureAndSubmit, referenceReady, stopCamera]);
+  }, [
+    captureAndSubmit,
+    identityStatus,
+    referenceReady,
+    stopCamera,
+  ]);
 
   const getMatchMessage = () => {
     switch (faceMatchStatus) {
@@ -336,6 +396,30 @@ export default function ProctoringCheckIn({
         )}
       </div>
 
+      <div className="mt-4 rounded-lg border border-gray-200 p-3">
+        <div className="text-xs font-medium uppercase text-gray-500">
+          Identity verification
+        </div>
+
+        <div className="mt-1 flex items-center gap-2 text-sm font-medium text-gray-900">
+          {identityStatus === "VERIFIED" ? (
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+          ) : (
+            <ShieldAlert className="h-4 w-4 text-amber-600" />
+          )}
+
+          {identityLoading
+            ? "Checking verification..."
+            : identityStatus === "VERIFIED"
+              ? "Verified"
+              : identityStatus}
+        </div>
+
+        <p className="mt-1 text-xs text-gray-500">
+          Development mode uses the project's mock verification provider.
+        </p>
+      </div>
+
       {cameraError && (
         <div className="mt-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -357,6 +441,7 @@ export default function ProctoringCheckIn({
           <div className="text-xs font-medium uppercase text-gray-500">
             Face signal
           </div>
+
           <div className="mt-1 flex items-center gap-2 text-sm font-medium text-gray-900">
             {faceMatchStatus === "MATCH" ? (
               <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -402,7 +487,12 @@ export default function ProctoringCheckIn({
           <button
             type="button"
             onClick={() => void startCamera()}
-            disabled={!referenceReady || submitting}
+            disabled={
+              identityLoading ||
+              identityStatus !== "VERIFIED" ||
+              !referenceReady ||
+              submitting
+            }
             className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             Start camera check

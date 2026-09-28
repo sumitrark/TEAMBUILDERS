@@ -124,3 +124,4 @@ def get_time_remaining_seconds(hackathon: Hackathon) -> int | None:
 
     remaining = (target - now).total_seconds()
     return max(int(remaining), 0)
+

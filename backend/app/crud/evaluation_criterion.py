@@ -224,3 +224,4 @@ async def delete_evaluation_criterion(
     await db.refresh(criterion)
 
     return criterion
+

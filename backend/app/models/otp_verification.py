@@ -110,3 +110,4 @@ class OtpVerification(Base):
             name="uq_otp_verifications_user_purpose",
         ),
     )
+

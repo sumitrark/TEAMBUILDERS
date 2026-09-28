@@ -1,4 +1,4 @@
-﻿import Human from "@/lib/human-browser";
+﻿import getHuman from "@/lib/human-browser";
 
 export type FaceMatchStatus =
   | "MATCH"
@@ -7,43 +7,42 @@ export type FaceMatchStatus =
   | "MULTIPLE_FACES"
   | "UNAVAILABLE";
 
-const human = new Human({
-  backend: "webgl",
-  modelBasePath:
-    "https://cdn.jsdelivr.net/npm/@vladmandic/human/models/",
-  face: {
-    enabled: true,
-    detector: {
-      maxDetected: 2,
-      minConfidence: 0.6,
-      rotation: true,
-    },
-    mesh: {
-      enabled: true,
-    },
-    description: {
-      enabled: true,
-    },
-  },
-});
+const MATCH_OPTIONS = {
+  order: 2,
+  multiplier: 25,
+  min: 0.2,
+  max: 0.8,
+};
 
+const MATCH_THRESHOLD = 0.5;
+
+let humanPromise: ReturnType<typeof getHuman> | null = null;
 let initialized = false;
 
-export async function initializeFaceMatcher() {
-  if (initialized) return human;
+async function getEngine() {
+  if (!humanPromise) {
+    humanPromise = getHuman();
+  }
 
-  await human.load();
-  await human.warmup();
+  const human = await humanPromise;
 
-  initialized = true;
+  if (!initialized) {
+    await human.load();
+    await human.warmup();
+    initialized = true;
+  }
 
   return human;
+}
+
+export async function initializeFaceMatcher() {
+  return getEngine();
 }
 
 export async function getReferenceEmbedding(
   photoDataUrl: string
 ): Promise<number[] | null> {
-  const engine = await initializeFaceMatcher();
+  const engine = await getEngine();
 
   const image = new Image();
   image.src = photoDataUrl;
@@ -73,7 +72,7 @@ export async function compareVideoFace(
   similarity: number | null;
   faceDetected: boolean;
 }> {
-  const engine = await initializeFaceMatcher();
+  const engine = await getEngine();
 
   const result = await engine.detect(video);
 
@@ -105,13 +104,12 @@ export async function compareVideoFace(
 
   const similarity = engine.match.similarity(
     referenceEmbedding,
-    embedding
+    embedding,
+    MATCH_OPTIONS
   );
 
-  // Project/demo threshold. This is configurable and is not a
-  // biometric/legal identity standard.
   const status: FaceMatchStatus =
-    similarity >= 0.65 ? "MATCH" : "MISMATCH";
+    similarity >= MATCH_THRESHOLD ? "MATCH" : "MISMATCH";
 
   return {
     status,

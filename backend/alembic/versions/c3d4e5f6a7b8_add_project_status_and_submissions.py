@@ -83,3 +83,4 @@ def downgrade() -> None:
     op.drop_index("ix_submissions_project_id", table_name="submissions")
     op.drop_table("submissions")
     op.drop_column("projects", "status")
+

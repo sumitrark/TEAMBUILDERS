@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
 export const api = axios.create({
   baseURL: "http://localhost:8000/api/v1",
@@ -7,9 +7,59 @@ export const api = axios.create({
   },
 });
 
+type RetryableRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+};
+
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  const refreshToken = localStorage.getItem("refresh_token");
+
+  if (!refreshToken) {
+    return null;
+  }
+
+  refreshPromise = axios
+    .post(`${api.defaults.baseURL}/auth/refresh`, {
+      refresh_token: refreshToken,
+    })
+    .then(({ data }) => {
+      const accessToken = data.access_token;
+      const newRefreshToken = data.refresh_token;
+
+      if (!accessToken || !newRefreshToken) {
+        throw new Error("Invalid refresh response");
+      }
+
+      localStorage.setItem("access_token", accessToken);
+      localStorage.setItem("refresh_token", newRefreshToken);
+
+      return accessToken;
+    })
+    .catch((error) => {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+
+      throw error;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+
+  return refreshPromise;
+}
+
 api.interceptors.request.use(
   (config) => {
-    // Only access localStorage in the browser
     if (typeof window !== "undefined") {
       const token = localStorage.getItem("access_token");
 
@@ -20,118 +70,55 @@ api.interceptors.request.use(
 
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
-
-// ---------------------------------------------------------
-// 401 handling: redeem the refresh token exactly once per
-// expired access token and replay every request that failed
-// while that refresh was in flight.
-//
-// Refresh tokens rotate server-side (the old one is revoked the
-// moment a new one is issued), so if two requests both hit 401
-// at once and each independently call /auth/refresh with the
-// same old refresh token, the second call gets rejected as reuse
-// and the backend signs the user out of every session. The queue
-// below makes sure only one refresh call is ever in flight.
-// ---------------------------------------------------------
-
-let isRefreshing = false;
-let pendingQueue: {
-  resolve: (token: string) => void;
-  reject: (error: unknown) => void;
-}[] = [];
-
-function resolvePendingQueue(token: string | null, error: unknown = null) {
-  pendingQueue.forEach(({ resolve, reject }) => {
-    if (token) {
-      resolve(token);
-    } else {
-      reject(error);
-    }
-  });
-
-  pendingQueue = [];
-}
 
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
+  async (error: AxiosError) => {
+    const originalRequest = error.config as RetryableRequestConfig | undefined;
+
+    const url = originalRequest?.url ?? "";
 
     const isAuthEndpoint =
-      originalRequest?.url?.includes("/auth/login") ||
-      originalRequest?.url?.includes("/auth/register") ||
-      originalRequest?.url?.includes("/auth/refresh");
+      url.includes("/auth/login") ||
+      url.includes("/auth/register") ||
+      url.includes("/auth/refresh");
 
     if (
-      error.response?.status === 401 &&
-      originalRequest &&
-      !originalRequest._retry &&
-      !isAuthEndpoint &&
-      typeof window !== "undefined"
+      error.response?.status !== 401 ||
+      !originalRequest ||
+      originalRequest._retry ||
+      isAuthEndpoint ||
+      typeof window === "undefined"
     ) {
-      const refreshToken = localStorage.getItem("refresh_token");
+      if (error.response?.status === 401) {
+        console.error("Authentication failed:", error.response?.data);
+      }
 
-      if (!refreshToken) {
+      return Promise.reject(error);
+    }
+
+    const refreshToken = localStorage.getItem("refresh_token");
+
+    if (!refreshToken) {
+      return Promise.reject(error);
+    }
+
+    originalRequest._retry = true;
+
+    try {
+      const newAccessToken = await refreshAccessToken();
+
+      if (!newAccessToken) {
         return Promise.reject(error);
       }
 
-      if (isRefreshing) {
-        // A refresh is already in flight - wait for it instead of
-        // starting a second one.
-        return new Promise((resolve, reject) => {
-          pendingQueue.push({
-            resolve: (newToken: string) => {
-              originalRequest.headers.Authorization = `Bearer ${newToken}`;
-              resolve(api(originalRequest));
-            },
-            reject,
-          });
-        });
-      }
+      originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
 
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      try {
-        const { data } = await axios.post(
-          `${api.defaults.baseURL}/auth/refresh`,
-          { refresh_token: refreshToken }
-        );
-
-        localStorage.setItem("access_token", data.access_token);
-        localStorage.setItem("refresh_token", data.refresh_token);
-
-        resolvePendingQueue(data.access_token);
-
-        originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
-        return api(originalRequest);
-      } catch (refreshError) {
-        resolvePendingQueue(null, refreshError);
-
-        // Refresh itself failed (expired, reused, or invalid) - the
-        // session can't be recovered client-side. Clear it and send
-        // the user back to login.
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
-
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
+      return api(originalRequest);
+    } catch (refreshError) {
+      return Promise.reject(refreshError);
     }
-
-    if (error.response?.status === 401) {
-      console.error("Authentication failed:", error.response?.data);
-    }
-
-    return Promise.reject(error);
   }
 );

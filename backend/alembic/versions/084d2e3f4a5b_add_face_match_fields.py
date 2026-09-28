@@ -1,4 +1,4 @@
-﻿"""add face match fields
+"""add face match fields
 
 Revision ID: 084d2e3f4a5b
 Revises: 083c1d2e3f4a
@@ -28,3 +28,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_column("proctoring_events", "face_similarity")
     op.drop_column("proctoring_events", "face_match_status")
+

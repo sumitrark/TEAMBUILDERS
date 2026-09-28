@@ -70,3 +70,4 @@ class AiEvaluation(Base):
     )
 
     project = relationship("Project")
+

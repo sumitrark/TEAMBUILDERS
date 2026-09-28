@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -14,3 +14,4 @@ class FaceReferencePhotoResponse(BaseModel):
 
 class FaceReferencePhotoUpdate(BaseModel):
     photo_data_url: str
+

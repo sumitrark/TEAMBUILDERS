@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,3 +70,4 @@ async def verify_identity(
     await db.refresh(verification)
 
     return verification
+

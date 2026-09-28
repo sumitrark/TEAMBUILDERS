@@ -43,3 +43,4 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_notifications_user_id'), table_name='notifications')
     op.drop_table('notifications')
     # ### end Alembic commands ###
+

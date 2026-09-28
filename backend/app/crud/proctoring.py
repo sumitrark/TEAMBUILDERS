@@ -244,3 +244,4 @@ async def disqualify_flagged_participant(
     await db.refresh(participant)
 
     return participant
+

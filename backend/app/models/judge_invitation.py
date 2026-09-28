@@ -122,3 +122,4 @@ class JudgeInvitation(Base):
         "User",
         foreign_keys=[invited_user_id],
     )
+

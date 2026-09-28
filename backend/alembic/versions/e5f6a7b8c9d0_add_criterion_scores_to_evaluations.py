@@ -28,3 +28,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_column("evaluations", "criterion_scores")
+

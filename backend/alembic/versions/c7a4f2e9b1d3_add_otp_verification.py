@@ -92,3 +92,4 @@ def downgrade() -> None:
     op.drop_constraint("uq_users_mobile_number", "users", type_="unique")
     op.drop_column("users", "phone_verified")
     op.drop_column("users", "mobile_number")
+

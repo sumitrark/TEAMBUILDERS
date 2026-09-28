@@ -1,4 +1,4 @@
-﻿"""add configurable evaluation criteria
+"""add configurable evaluation criteria
 
 Revision ID: d4e5f6a7b8c9
 Revises: c3d4e5f6a7b8
@@ -104,3 +104,4 @@ def downgrade() -> None:
         table_name="evaluation_criteria",
     )
     op.drop_table("evaluation_criteria")
+

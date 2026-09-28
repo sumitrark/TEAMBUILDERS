@@ -1,4 +1,4 @@
-﻿"""add face reference photos
+"""add face reference photos
 
 Revision ID: 083c1d2e3f4a
 Revises: 072b986ddaea
@@ -44,3 +44,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("face_reference_photos")
+

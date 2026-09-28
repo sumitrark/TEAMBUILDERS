@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, JSON, String
@@ -75,3 +75,4 @@ class IdentityVerification(Base):
     )
 
     participant = relationship("Participant")
+

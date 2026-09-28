@@ -50,3 +50,4 @@ class EvaluationSummary(BaseModel):
     average_overall: float
 
     total_score: float
+

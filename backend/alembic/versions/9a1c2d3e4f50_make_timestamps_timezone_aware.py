@@ -58,3 +58,4 @@ def downgrade() -> None:
             type_=sa.DateTime(timezone=False),
             postgresql_using=f"{column} AT TIME ZONE 'UTC'",
         )
+

@@ -225,3 +225,4 @@ async def _handle_subscription_deleted(db: AsyncSession, subscription_obj: dict)
         user.subscription_plan = "free"
         user.subscription_status = "canceled"
         await db.commit()
+

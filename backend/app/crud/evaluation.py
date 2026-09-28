@@ -346,3 +346,4 @@ async def get_project_score(
         ),
         "weighted_score": weighted_score,
     }
+

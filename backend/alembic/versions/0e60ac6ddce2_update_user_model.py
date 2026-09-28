@@ -36,3 +36,4 @@ def downgrade() -> None:
     op.drop_column('users', 'course')
     op.drop_column('users', 'college')
     # ### end Alembic commands ###
+

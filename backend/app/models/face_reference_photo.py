@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Text, func
@@ -41,4 +41,5 @@ class FaceReferencePhoto(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
 

@@ -375,3 +375,4 @@ async def _notify_organizer(
             f"/organizer/hackathons/{invitation.hackathon_id}/judges"
         ),
     )
+

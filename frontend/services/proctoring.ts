@@ -100,6 +100,14 @@ export interface ProctoringMonitorEvent {
   id: string;
   event_type: string;
   face_detected: boolean;
+  face_match_status:
+    | "MATCH"
+    | "MISMATCH"
+    | "NO_FACE"
+    | "MULTIPLE_FACES"
+    | "UNAVAILABLE"
+    | null;
+  face_similarity: number | null;
   snapshot_data_url: string | null;
   created_at: string;
 }
@@ -125,4 +133,13 @@ export async function getProctoringMonitor(
   );
 
   return response.data;
+}
+
+export async function deleteProctoringSnapshot(
+  hackathonId: string,
+  eventId: string
+): Promise<void> {
+  await api.delete(
+    `/proctoring/hackathons/${hackathonId}/events/${eventId}/snapshot`
+  );
 }

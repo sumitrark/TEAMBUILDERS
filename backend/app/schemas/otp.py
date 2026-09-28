@@ -53,3 +53,4 @@ class OtpStatusResponse(BaseModel):
     expires_in_seconds: int | None = None
 
     resend_available_in_seconds: int | None = None
+

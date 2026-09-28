@@ -76,3 +76,4 @@ async def count_user_ai_evaluations_today(
     )
 
     return result.scalar_one()
+

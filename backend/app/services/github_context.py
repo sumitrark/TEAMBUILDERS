@@ -60,3 +60,4 @@ async def fetch_github_readme(github_url: str) -> str | None:
     except Exception as exc:  # noqa: BLE001 - genuinely best-effort
         logger.warning("Could not fetch README for %s: %s", github_url, exc)
         return None
+

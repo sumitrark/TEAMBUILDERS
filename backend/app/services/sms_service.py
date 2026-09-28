@@ -63,3 +63,4 @@ def _send_via_console(mobile_number: str, otp: str) -> None:
         mobile_number,
         otp,
     )
+

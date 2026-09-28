@@ -57,3 +57,4 @@ def downgrade() -> None:
     op.drop_table('content_generations')
     op.drop_table('team_hackathons')
     # ### end Alembic commands ###
+

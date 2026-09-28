@@ -172,3 +172,4 @@ app.include_router(
     identity_verification_router,
     prefix="/api/v1",
 )
+

@@ -97,3 +97,4 @@ def downgrade() -> None:
     op.drop_column("participants", "proctoring_strikes")
 
     op.drop_column("projects", "ai_tools_used")
+
