@@ -47,6 +47,16 @@ class Participant(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+        # -------------------------
+    # Workspace presence
+    # -------------------------
+    # Updated by the authenticated participant while the workspace
+    # is open. This is only used for teammate presence, not
+    # proctoring/camera information.
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     # -------------------------
     # Proctoring

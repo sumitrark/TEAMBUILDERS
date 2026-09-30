@@ -14,6 +14,11 @@ from app.crud.proctoring import (
     get_my_status,
     record_event,
 )
+from app.crud.proctoring_session import (
+    heartbeat_proctoring_session,
+    start_proctoring_session,
+    stop_proctoring_session,
+)
 from app.db.database import get_db
 from app.dependencies.current_user import get_current_user
 from app.dependencies.organizer import get_current_organizer
@@ -30,6 +35,11 @@ from app.schemas.proctoring import (
     ProctoringEventResponse,
     ProctoringMonitorParticipantResponse,
 )
+from app.schemas.proctoring_session import (
+    ProctoringSessionResponse,
+    ProctoringSessionStart,
+    ProctoringSessionStop,
+)
 
 
 router = APIRouter(
@@ -41,6 +51,7 @@ router = APIRouter(
 # ---------------------------------------------------------------------------
 # Participant event submission
 # ---------------------------------------------------------------------------
+
 
 @router.post(
     "/events",
@@ -73,9 +84,7 @@ async def submit_event(
             )
         )
 
-        verification = (
-            verification_result.scalar_one_or_none()
-        )
+        verification = verification_result.scalar_one_or_none()
 
         if (
             verification is None
@@ -98,9 +107,7 @@ async def submit_event(
             )
         )
 
-        reference = (
-            reference_result.scalar_one_or_none()
-        )
+        reference = reference_result.scalar_one_or_none()
 
         if reference is None:
             raise HTTPException(
@@ -133,8 +140,88 @@ async def submit_event(
 
 
 # ---------------------------------------------------------------------------
+# Participant: automatic proctoring sessions
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/sessions/start",
+    response_model=ProctoringSessionResponse,
+)
+async def start_session(
+    payload: ProctoringSessionStart,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await start_proctoring_session(
+        db=db,
+        user_id=current_user.id,
+        hackathon_id=payload.hackathon_id,
+    )
+
+    if result == "NOT_PARTICIPANT":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not registered for this hackathon.",
+        )
+
+    return result
+
+
+@router.post(
+    "/sessions/{session_id}/heartbeat",
+    response_model=ProctoringSessionResponse,
+)
+async def heartbeat_session(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await heartbeat_proctoring_session(
+        db=db,
+        user_id=current_user.id,
+        session_id=session_id,
+    )
+
+    if result == "SESSION_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Active proctoring session not found.",
+        )
+
+    return result
+
+
+@router.post(
+    "/sessions/{session_id}/stop",
+    response_model=ProctoringSessionResponse,
+)
+async def stop_session(
+    session_id: UUID,
+    payload: ProctoringSessionStop,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await stop_proctoring_session(
+        db=db,
+        user_id=current_user.id,
+        session_id=session_id,
+        end_reason=payload.end_reason,
+    )
+
+    if result == "SESSION_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Active proctoring session not found.",
+        )
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Participant proctoring status
 # ---------------------------------------------------------------------------
+
 
 @router.get(
     "/my-status",
@@ -169,6 +256,7 @@ async def my_proctoring_status(
 # Organizer: flagged participants
 # ---------------------------------------------------------------------------
 
+
 @router.get(
     "/hackathons/{hackathon_id}/flagged",
     response_model=list[FlaggedParticipantResponse],
@@ -181,8 +269,7 @@ async def flagged_participants(
     hackathon_result = await db.execute(
         select(Hackathon).where(
             Hackathon.id == hackathon_id,
-            Hackathon.organizer_id
-            == current_organizer.id,
+            Hackathon.organizer_id == current_organizer.id,
         )
     )
 
@@ -204,11 +291,10 @@ async def flagged_participants(
 # Organizer: proctoring monitor
 # ---------------------------------------------------------------------------
 
+
 @router.get(
     "/hackathons/{hackathon_id}/monitor",
-    response_model=list[
-        ProctoringMonitorParticipantResponse
-    ],
+    response_model=list[ProctoringMonitorParticipantResponse],
 )
 async def proctoring_monitor(
     hackathon_id: UUID,
@@ -218,8 +304,7 @@ async def proctoring_monitor(
     hackathon_result = await db.execute(
         select(Hackathon).where(
             Hackathon.id == hackathon_id,
-            Hackathon.organizer_id
-            == current_organizer.id,
+            Hackathon.organizer_id == current_organizer.id,
         )
     )
 
@@ -247,8 +332,7 @@ async def proctoring_monitor(
             == Participant.id,
         )
         .where(
-            Participant.hackathon_id
-            == hackathon_id
+            Participant.hackathon_id == hackathon_id
         )
     )
 
@@ -271,9 +355,7 @@ async def proctoring_monitor(
             .limit(10)
         )
 
-        recent_events = (
-            event_result.scalars().all()
-        )
+        recent_events = event_result.scalars().all()
 
         last_event = (
             recent_events[0]
@@ -343,6 +425,7 @@ async def proctoring_monitor(
 # Organizer: delete a stored snapshot
 # ---------------------------------------------------------------------------
 
+
 @router.delete(
     "/hackathons/{hackathon_id}/events/{event_id}/snapshot"
 )
@@ -357,6 +440,7 @@ async def delete_proctoring_snapshot(
 
     The proctoring event itself is preserved so that the
     event timestamp and review signals remain available.
+
     Only the hackathon organizer can perform this action.
     """
 
@@ -367,9 +451,7 @@ async def delete_proctoring_snapshot(
         )
     )
 
-    hackathon = (
-        hackathon_result.scalar_one_or_none()
-    )
+    hackathon = hackathon_result.scalar_one_or_none()
 
     if hackathon is None:
         raise HTTPException(
@@ -383,8 +465,7 @@ async def delete_proctoring_snapshot(
     event_result = await db.execute(
         select(ProctoringEvent).where(
             ProctoringEvent.id == event_id,
-            ProctoringEvent.hackathon_id
-            == hackathon_id,
+            ProctoringEvent.hackathon_id == hackathon_id,
         )
     )
 
@@ -416,6 +497,7 @@ async def delete_proctoring_snapshot(
 # Organizer: dismiss review flag
 # ---------------------------------------------------------------------------
 
+
 @router.post(
     "/hackathons/{hackathon_id}/flagged/{user_id}/dismiss"
 )
@@ -428,14 +510,11 @@ async def dismiss_participant_flag(
     hackathon_result = await db.execute(
         select(Hackathon).where(
             Hackathon.id == hackathon_id,
-            Hackathon.organizer_id
-            == current_organizer.id,
+            Hackathon.organizer_id == current_organizer.id,
         )
     )
 
-    hackathon = (
-        hackathon_result.scalar_one_or_none()
-    )
+    hackathon = hackathon_result.scalar_one_or_none()
 
     if hackathon is None:
         raise HTTPException(
@@ -445,15 +524,12 @@ async def dismiss_participant_flag(
 
     participant_result = await db.execute(
         select(Participant).where(
-            Participant.hackathon_id
-            == hackathon_id,
+            Participant.hackathon_id == hackathon_id,
             Participant.user_id == user_id,
         )
     )
 
-    participant = (
-        participant_result.scalar_one_or_none()
-    )
+    participant = participant_result.scalar_one_or_none()
 
     if participant is None:
         raise HTTPException(
@@ -475,6 +551,7 @@ async def dismiss_participant_flag(
 # Organizer: disqualify participant
 # ---------------------------------------------------------------------------
 
+
 @router.post(
     "/hackathons/{hackathon_id}/flagged/{user_id}/disqualify"
 )
@@ -487,14 +564,11 @@ async def disqualify_participant(
     hackathon_result = await db.execute(
         select(Hackathon).where(
             Hackathon.id == hackathon_id,
-            Hackathon.organizer_id
-            == current_organizer.id,
+            Hackathon.organizer_id == current_organizer.id,
         )
     )
 
-    hackathon = (
-        hackathon_result.scalar_one_or_none()
-    )
+    hackathon = hackathon_result.scalar_one_or_none()
 
     if hackathon is None:
         raise HTTPException(
@@ -504,15 +578,12 @@ async def disqualify_participant(
 
     participant_result = await db.execute(
         select(Participant).where(
-            Participant.hackathon_id
-            == hackathon_id,
+            Participant.hackathon_id == hackathon_id,
             Participant.user_id == user_id,
         )
     )
 
-    participant = (
-        participant_result.scalar_one_or_none()
-    )
+    participant = participant_result.scalar_one_or_none()
 
     if participant is None:
         raise HTTPException(
@@ -539,8 +610,3 @@ async def disqualify_participant(
     return {
         "message": "Participant disqualified.",
     }
-
-
-
-
-

@@ -26,3 +26,4 @@ from app.models.evaluation_criterion import EvaluationCriterion
 from app.models.identity_verification import IdentityVerification
 from app.models.face_reference_photo import FaceReferencePhoto
 from app.models.face_reference_photo import FaceReferencePhoto
+from app.models.proctoring_session import ProctoringSession

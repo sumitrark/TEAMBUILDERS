@@ -125,6 +125,56 @@ export interface ProctoringMonitorParticipant {
   recent_events: ProctoringMonitorEvent[];
 }
 
+export interface ProctoringSession {
+  id: string;
+  hackathon_id: string;
+  started_at: string;
+  last_heartbeat_at: string;
+  ended_at: string | null;
+  end_reason: string | null;
+  active: boolean;
+}
+
+export async function startProctoringSession(
+  hackathonId: string
+): Promise<ProctoringSession> {
+  const response = await api.post("/proctoring/sessions/start", {
+    hackathon_id: hackathonId,
+  });
+
+  return response.data;
+}
+
+export async function heartbeatProctoringSession(
+  sessionId: string
+): Promise<ProctoringSession> {
+  const response = await api.post(
+    `/proctoring/sessions/${sessionId}/heartbeat`
+  );
+
+  return response.data;
+}
+
+export async function stopProctoringSession(
+  sessionId: string,
+  endReason:
+    | "CAMERA_STOPPED"
+    | "PAGE_CLOSED"
+    | "NAVIGATED_AWAY"
+    | "SESSION_RESTARTED"
+    | "ERROR"
+    | "MANUAL" = "CAMERA_STOPPED"
+): Promise<ProctoringSession> {
+  const response = await api.post(
+    `/proctoring/sessions/${sessionId}/stop`,
+    {
+      end_reason: endReason,
+    }
+  );
+
+  return response.data;
+}
+
 export async function getProctoringMonitor(
   hackathonId: string
 ): Promise<ProctoringMonitorParticipant[]> {

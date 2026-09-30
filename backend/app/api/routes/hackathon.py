@@ -5,7 +5,7 @@ from fastapi import (
     Depends,
     HTTPException,
 )
-
+from app.schemas.workspace import WorkspacePresenceResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -30,6 +30,14 @@ from app.crud.hackathon import (
     set_hackathon_status,
 )
 
+from app.crud.submission import (
+    submit_project,
+    get_project_submission_status,
+)
+from app.schemas.submission import (
+    SubmissionResponse,
+    ProjectStatusResponse,
+)
 
 router = APIRouter(
     prefix="/hackathons",
@@ -119,7 +127,30 @@ async def hackathon_workspace(
 
     return result
 
+@router.post(
+    "/{hackathon_id}/workspace/presence",
+    response_model=WorkspacePresenceResponse,
+)
+async def hackathon_workspace_presence(
+    hackathon_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    from app.crud.workspace import update_workspace_presence
 
+    result = await update_workspace_presence(
+        db=db,
+        user_id=current_user.id,
+        hackathon_id=hackathon_id,
+    )
+
+    if result == "NOT_REGISTERED":
+        raise HTTPException(
+            status_code=403,
+            detail="You are not registered for this hackathon",
+        )
+
+    return result
 @router.get(
     "/{hackathon_id}",
     response_model=HackathonResponse,
@@ -145,7 +176,98 @@ async def single_hackathon(
 
     return hackathon
 
+# =========================================================
+# PARTICIPANT SUBMISSIONS
+# =========================================================
 
+@router.post(
+    "/{hackathon_id}/submissions/{project_id}",
+    response_model=SubmissionResponse,
+)
+async def submit_hackathon_project(
+    hackathon_id: UUID,
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await submit_project(
+        db=db,
+        user_id=current_user.id,
+        project_id=project_id,
+    )
+
+    if isinstance(result, str):
+        error_map = {
+            "PROJECT_NOT_FOUND": (404, "Project not found"),
+            "PROJECT_HAS_NO_TEAM": (400, "Project is not associated with a team"),
+            "HACKATHON_NOT_FOUND": (404, "Hackathon not found"),
+            "NOT_AUTHORIZED": (403, "You are not authorized to submit this project"),
+            "HACKATHON_NOT_STARTED": (400, "The hackathon submission window is not open"),
+            "SUBMISSION_WINDOW_CLOSED": (400, "The submission window is closed"),
+            "PROJECT_LOCKED": (400, "This project is locked and cannot be submitted"),
+        }
+
+        status_code, detail = error_map.get(
+            result,
+            (400, "Unable to submit project"),
+        )
+
+        raise HTTPException(
+            status_code=status_code,
+            detail=detail,
+        )
+
+    if result.hackathon_id != hackathon_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Project does not belong to this hackathon",
+        )
+
+    return result
+
+
+@router.get(
+    "/{hackathon_id}/submissions/{project_id}/status",
+    response_model=ProjectStatusResponse,
+)
+async def hackathon_project_submission_status(
+    hackathon_id: UUID,
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await get_project_submission_status(
+        db=db,
+        user_id=current_user.id,
+        project_id=project_id,
+    )
+
+    if isinstance(result, str):
+        error_map = {
+            "PROJECT_NOT_FOUND": (404, "Project not found"),
+            "NOT_AUTHORIZED": (403, "You are not authorized to view this project"),
+        }
+
+        status_code, detail = error_map.get(
+            result,
+            (400, "Unable to load submission status"),
+        )
+
+        raise HTTPException(
+            status_code=status_code,
+            detail=detail,
+        )
+
+    # Make sure the project belongs to the requested hackathon.
+    latest = result.get("latest_submission")
+
+    if latest is not None and latest.hackathon_id != hackathon_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Project does not belong to this hackathon",
+        )
+
+    return result
 # =========================================================
 # ORGANIZER - CREATE
 # =========================================================

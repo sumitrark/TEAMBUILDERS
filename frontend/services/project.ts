@@ -96,9 +96,12 @@ export interface ProjectSubmissionStatus {
 }
 
 export async function submitProject(
+  hackathonId: string,
   projectId: string
 ): Promise<SubmissionInfo> {
-  const res = await api.post(`/projects/${projectId}/submit`);
+  const res = await api.post(
+    `/hackathons/${hackathonId}/submissions/${projectId}`
+  );
   return res.data;
 }
 

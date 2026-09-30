@@ -13,10 +13,11 @@ import {
   Users,
   Loader2,
   CheckCircle2,
+  FolderGit2,
 } from "lucide-react";
 
 import { api } from "@/lib/api";
-import ProctoringCheckIn from "@/components/dashboard/ProctoringCheckIn";
+
 
 interface Hackathon {
   id: string;
@@ -373,16 +374,7 @@ export default function HackathonDetailsPage() {
 
           </section>
 
-          {/* Presence check-in - only meaningful while the
-              hackathon is actually running. The backend is the
-              real authorization boundary (only an actual registered
-              participant can submit a check-in); this date check is
-              just to avoid showing an irrelevant widget. */}
-          {new Date() >= new Date(hackathon.start_date) &&
-            new Date() <= new Date(hackathon.end_date) && (
-              <ProctoringCheckIn hackathonId={hackathon.id} />
-            )}
-
+          
         </div>
 
         {/* Right */}
@@ -414,17 +406,25 @@ export default function HackathonDetailsPage() {
 
             </div>
 
-            <div className="mt-6">
+            <div className="mt-6 space-y-3">
 
-              <Link
-                href={`/dashboard/hackathons/${hackathon.id}/register`}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-3.5 font-semibold text-white transition hover:bg-violet-700"
-              >
-                <CheckCircle2 size={19} />
-                Register My Team
-              </Link>
+  <Link
+    href={`/dashboard/hackathons/${hackathon.id}/workspace`}
+    className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-3.5 font-semibold text-white transition hover:bg-violet-700"
+  >
+    <FolderGit2 size={19} />
+    Open Workspace
+  </Link>
 
-            </div>
+  <Link
+    href={`/dashboard/hackathons/${hackathon.id}/register`}
+    className="flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-5 py-3.5 font-semibold text-violet-700 transition hover:bg-violet-100"
+  >
+    <CheckCircle2 size={19} />
+    Register My Team
+  </Link>
+
+</div>
 
             {hackathon.website && (
               <a

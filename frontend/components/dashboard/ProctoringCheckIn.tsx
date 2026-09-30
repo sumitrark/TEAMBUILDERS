@@ -1,519 +1,533 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle,
-  Camera,
-  CheckCircle2,
-  ShieldAlert,
-} from "lucide-react";
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Camera, CheckCircle2, Loader2, ShieldAlert } from "lucide-react";
 
 import {
-  getMyProctoringStatus,
-  submitProctoringEvent,
-} from "@/services/proctoring";
-import { getFaceReferencePhoto } from "@/services/profile";
+  getFaceReferencePhoto,
+} from "@/services/profile";
 import {
   getIdentityVerification,
   startIdentityVerification,
 } from "@/services/identityVerification";
 import {
+  getMyProctoringStatus,
+  submitProctoringEvent,
+  startProctoringSession,
+  heartbeatProctoringSession,
+  stopProctoringSession,
+  type ProctoringSession,
+} from "@/services/proctoring";
+import {
   compareVideoFace,
   getReferenceEmbedding,
+  type FaceMatchStatus,
 } from "@/services/faceMatching";
 
-interface ProctoringCheckInProps {
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+const FACE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+
+interface Props {
   hackathonId: string;
 }
 
-type FaceMatchStatus =
-  | "MATCH"
-  | "MISMATCH"
-  | "NO_FACE"
-  | "MULTIPLE_FACES"
-  | "UNAVAILABLE"
-  | null;
-
-type IdentityStatus =
-  | "PENDING"
-  | "VERIFIED"
-  | "FAILED"
-  | "EXPIRED";
-
-const SNAPSHOT_MAX_DIMENSION = 240;
-const CHECK_INTERVAL_MS = 5 * 60 * 1000;
-
 export default function ProctoringCheckIn({
   hackathonId,
-}: ProctoringCheckInProps) {
+}: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const referenceEmbeddingRef = useRef<number[] | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionRef = useRef<ProctoringSession | null>(null);
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
+  const faceCheckTimerRef = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
+  const stoppingRef = useRef(false);
 
-  const [cameraOn, setCameraOn] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState(false);
+  const [active, setActive] = useState(false);
+
+  const [identityVerified, setIdentityVerified] = useState(false);
   const [referenceReady, setReferenceReady] = useState(false);
-  const [identityStatus, setIdentityStatus] =
-    useState<IdentityStatus>("PENDING");
-  const [identityLoading, setIdentityLoading] = useState(true);
 
-  const [status, setStatus] = useState({
-    strike_count: 0,
-    strike_threshold: 3,
-    flagged_for_review: false,
-  });
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [message, setMessage] = useState(
+    "Preparing proctoring..."
+  );
 
-  const [lastMessage, setLastMessage] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [faceMatchStatus, setFaceMatchStatus] =
-    useState<FaceMatchStatus>(null);
-  const [faceSimilarity, setFaceSimilarity] = useState<number | null>(null);
+    useState<FaceMatchStatus | null>(null);
 
-  const stopCamera = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+  const referenceEmbeddingRef = useRef<number[] | null>(null);
+
+  const clearTimers = useCallback(() => {
+    if (heartbeatTimerRef.current) {
+      clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
     }
 
+    if (faceCheckTimerRef.current) {
+      clearInterval(faceCheckTimerRef.current);
+      faceCheckTimerRef.current = null;
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+
       streamRef.current = null;
     }
 
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-
-    setCameraOn(false);
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
+  const stopSession = useCallback(
+    async (
+      reason:
+        | "CAMERA_STOPPED"
+        | "PAGE_CLOSED"
+        | "NAVIGATED_AWAY"
+        | "ERROR"
+        | "MANUAL"
+    ) => {
+      clearTimers();
+      stopCamera();
 
-    async function loadInitialState() {
+      const session = sessionRef.current;
+
+      if (!session || stoppingRef.current) {
+        return;
+      }
+
+      stoppingRef.current = true;
+
       try {
-        const [proctoringStatus, reference, verification] =
+        await stopProctoringSession(session.id, reason);
+      } catch {
+        // The session may already have been closed by the backend.
+      } finally {
+        sessionRef.current = null;
+        setActive(false);
+        stoppingRef.current = false;
+      }
+    },
+    [clearTimers, stopCamera]
+  );
+
+  const captureFaceCheck = useCallback(async () => {
+    const video = videoRef.current;
+    const referenceEmbedding = referenceEmbeddingRef.current;
+
+    if (!video || !referenceEmbedding || video.readyState < 2) {
+      return;
+    }
+
+    try {
+      const result = await compareVideoFace(
+        video,
+        referenceEmbedding
+      );
+
+      setFaceMatchStatus(result.status);
+
+      let snapshotDataUrl: string | null = null;
+
+      if (result.faceDetected) {
+        const canvas = document.createElement("canvas");
+
+        const maxDimension = 240;
+        const scale =
+          Math.min(
+            maxDimension / video.videoWidth,
+            maxDimension / video.videoHeight
+          ) || 1;
+
+        canvas.width = Math.max(
+          1,
+          Math.round(video.videoWidth * scale)
+        );
+
+        canvas.height = Math.max(
+          1,
+          Math.round(video.videoHeight * scale)
+        );
+
+        const context = canvas.getContext("2d");
+
+        if (context) {
+          context.drawImage(
+            video,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+          );
+
+          snapshotDataUrl = canvas.toDataURL(
+            "image/jpeg",
+            0.65
+          );
+        }
+      }
+
+      await submitProctoringEvent(
+        hackathonId,
+        "periodic_snapshot",
+        result.faceDetected,
+        snapshotDataUrl,
+        result.status,
+        result.similarity
+      );
+    } catch {
+      // Face checks are monitoring signals.
+      // A temporary browser/model failure should not break the workspace.
+    }
+  }, [hackathonId]);
+
+  const startMonitoring = useCallback(async () => {
+    if (starting || active) {
+      return;
+    }
+
+    setStarting(true);
+    setCameraError(null);
+
+    try {
+      const reference = await getFaceReferencePhoto();
+
+      if (!reference?.photo_data_url) {
+        setReferenceReady(false);
+        setMessage(
+          "A face reference photo is required before entering the monitored workspace."
+        );
+        return;
+      }
+
+      const identity = await getIdentityVerification(
+        hackathonId
+      );
+
+      let verified = identity.status === "VERIFIED";
+
+      if (!verified) {
+        const started =
+          await startIdentityVerification(hackathonId);
+
+        verified = started.status === "VERIFIED";
+      }
+
+      if (!verified) {
+        setIdentityVerified(false);
+        setMessage(
+          "Identity verification must be completed before proctoring can start."
+        );
+        return;
+      }
+
+      setIdentityVerified(true);
+
+      const embedding = await getReferenceEmbedding(
+        reference.photo_data_url
+      );
+
+      if (!embedding) {
+        setReferenceReady(false);
+        setMessage(
+          "The face reference photo could not be prepared for monitoring."
+        );
+        return;
+      }
+
+      referenceEmbeddingRef.current = embedding;
+      setReferenceReady(true);
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error(
+          "Camera access is not supported by this browser."
+        );
+      }
+
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+
+      streamRef.current = stream;
+
+      const video = videoRef.current;
+
+      if (!video) {
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        throw new Error("Camera preview is unavailable.");
+      }
+
+      video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+
+      await video.play();
+
+      const session =
+        await startProctoringSession(hackathonId);
+
+      sessionRef.current = session;
+      stoppingRef.current = false;
+
+      setActive(true);
+      setMessage(
+        "Proctoring active — camera monitoring is enabled."
+      );
+
+      // Initial face check.
+      await captureFaceCheck();
+
+      heartbeatTimerRef.current = setInterval(
+        async () => {
+          const currentSession = sessionRef.current;
+
+          if (!currentSession) {
+            return;
+          }
+
+          try {
+            const updated =
+              await heartbeatProctoringSession(
+                currentSession.id
+              );
+
+            sessionRef.current = updated;
+          } catch {
+            // Keep the local monitoring session alive.
+            // The next heartbeat can recover.
+          }
+        },
+        HEARTBEAT_INTERVAL_MS
+      );
+
+      faceCheckTimerRef.current = setInterval(
+        async () => {
+          await captureFaceCheck();
+        },
+        FACE_CHECK_INTERVAL_MS
+      );
+    } catch (error) {
+      stopCamera();
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Unable to start camera monitoring.";
+
+      setCameraError(errorMessage);
+      setActive(false);
+      setMessage(
+        "Camera monitoring could not be started."
+      );
+    } finally {
+      setStarting(false);
+      setLoading(false);
+    }
+  }, [
+    active,
+    captureFaceCheck,
+    hackathonId,
+    startIdentityVerification,
+    starting,
+    stopCamera,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const initialize = async () => {
+      try {
+        setLoading(true);
+
+        const [reference, identity] =
           await Promise.all([
-            getMyProctoringStatus(hackathonId),
             getFaceReferencePhoto(),
             getIdentityVerification(hackathonId),
           ]);
 
-        if (!mounted) return;
-
-        setStatus(proctoringStatus);
-        setIdentityStatus(verification.status);
-
-        if (verification.status !== "VERIFIED") {
-          try {
-            const verified = await startIdentityVerification(hackathonId);
-
-            if (!mounted) return;
-
-            setIdentityStatus(verified.status);
-
-            if (verified.status !== "VERIFIED") {
-              setCameraError(
-                "Identity verification could not be completed. Please try again."
-              );
-              return;
-            }
-          } catch (error) {
-            console.error("Identity verification failed", error);
-
-            if (mounted) {
-              setCameraError(
-                "Identity verification could not be completed. Please try again."
-              );
-            }
-
-            return;
-          }
-        }
-
-        if (!reference?.photo_data_url) {
-          setCameraError(
-            "Upload a Face Reference Photo in About Me before starting proctoring."
-          );
+        if (cancelled) {
           return;
         }
 
-        try {
-          const embedding = await getReferenceEmbedding(
-            reference.photo_data_url
+        setReferenceReady(
+          Boolean(reference?.photo_data_url)
+        );
+
+        setIdentityVerified(
+          identity.status === "VERIFIED"
+        );
+
+        await startMonitoring();
+      } catch {
+        if (!cancelled) {
+          setLoading(false);
+          setMessage(
+            "Unable to prepare proctoring. Please check your identity verification and face reference photo."
           );
-
-          if (!mounted) return;
-
-          if (!embedding) {
-            setCameraError(
-              "The Face Reference Photo could not be processed. Please upload a clear photo with one visible face."
-            );
-            return;
-          }
-
-          referenceEmbeddingRef.current = embedding;
-          setReferenceReady(true);
-        } catch {
-          if (mounted) {
-            setCameraError(
-              "Face matching could not be initialized in this browser."
-            );
-          }
-        }
-      } catch (error) {
-        console.error("Failed to load proctoring state", error);
-
-        if (mounted) {
-          setCameraError(
-            "Unable to load proctoring and identity status. Please try again."
-          );
-        }
-      } finally {
-        if (mounted) {
-          setIdentityLoading(false);
         }
       }
-    }
+    };
 
-    loadInitialState();
+    initialize();
 
     return () => {
-      mounted = false;
+      cancelled = true;
+    };
+  }, [hackathonId, startMonitoring]);
+
+  useEffect(() => {
+    const handlePageHide = () => {
+      const session = sessionRef.current;
+
+      if (!session) {
+        return;
+      }
+
+      // Best-effort cleanup. Browser lifecycle events do not
+      // guarantee that an awaited request will finish.
+      void stopProctoringSession(
+        session.id,
+        "PAGE_CLOSED"
+      );
+
+      sessionRef.current = null;
+      clearTimers();
+      stopCamera();
+      setActive(false);
+    };
+
+    window.addEventListener(
+      "pagehide",
+      handlePageHide
+    );
+
+    return () => {
+      window.removeEventListener(
+        "pagehide",
+        handlePageHide
+      );
+
+      clearTimers();
       stopCamera();
     };
-  }, [hackathonId, stopCamera]);
+  }, [clearTimers, stopCamera]);
 
-  const captureAndSubmit = useCallback(
-    async (eventType: "check_in" | "periodic_snapshot") => {
-      const video = videoRef.current;
-
-      if (
-        !video ||
-        video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
-        !referenceEmbeddingRef.current
-      ) {
-        return;
-      }
-
-      setSubmitting(true);
-
-      try {
-        const result = await compareVideoFace(
-          video,
-          referenceEmbeddingRef.current
-        );
-
-        setFaceMatchStatus(result.status);
-        setFaceSimilarity(result.similarity);
-
-        const canvas = document.createElement("canvas");
-
-        const sourceWidth = video.videoWidth || 640;
-        const sourceHeight = video.videoHeight || 480;
-
-        const scale = Math.min(
-          SNAPSHOT_MAX_DIMENSION / sourceWidth,
-          SNAPSHOT_MAX_DIMENSION / sourceHeight,
-          1
-        );
-
-        canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-        canvas.height = Math.max(1, Math.round(sourceHeight * scale));
-
-        const context = canvas.getContext("2d");
-
-        if (!context) {
-          throw new Error("Unable to capture camera snapshot.");
-        }
-
-        context.drawImage(
-          video,
-          0,
-          0,
-          canvas.width,
-          canvas.height
-        );
-
-        const snapshotDataUrl = canvas.toDataURL("image/jpeg", 0.5);
-
-        const response = await submitProctoringEvent(
-          hackathonId,
-          eventType,
-          result.faceDetected,
-          snapshotDataUrl,
-          result.status,
-          result.similarity
-        );
-
-        setStatus((current) => ({
-          ...current,
-          strike_count: response.strike_count,
-          flagged_for_review:
-            current.flagged_for_review ||
-            response.newly_flagged_for_review,
-        }));
-
-        if (result.status === "MATCH") {
-          setLastMessage(
-            result.similarity !== null
-              ? `Face match recorded (${Math.round(
-                  result.similarity * 100
-                )}%).`
-              : "Face match recorded."
-          );
-        } else if (result.status === "MISMATCH") {
-          setLastMessage(
-            "Face did not match the reference photo. This has been logged for review."
-          );
-        } else if (result.status === "NO_FACE") {
-          setLastMessage("No face detected. This has been logged.");
-        } else if (result.status === "MULTIPLE_FACES") {
-          setLastMessage(
-            "Multiple faces detected. This has been logged for review."
-          );
-        } else {
-          setLastMessage(
-            "Face matching was unavailable. The camera check was logged."
-          );
-        }
-      } catch (error) {
-        console.error("Proctoring check failed", error);
-        setLastMessage(
-          "The proctoring check could not be completed. Please try again."
-        );
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [hackathonId]
-  );
-
-  const startCamera = useCallback(async () => {
-    if (identityStatus !== "VERIFIED") {
-      setCameraError(
-        "Complete identity verification before starting the camera check."
-      );
-      return;
-    }
-
-    if (!referenceReady) {
-      setCameraError(
-        "Upload and save a Face Reference Photo before starting proctoring."
-      );
-      return;
-    }
-
-    setCameraError(null);
-    setLastMessage(null);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: "user",
-        },
-        audio: false,
-      });
-
-      streamRef.current = stream;
-
-      if (!videoRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
-
-      setCameraOn(true);
-
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      await captureAndSubmit("check_in");
-
-      intervalRef.current = setInterval(() => {
-        void captureAndSubmit("periodic_snapshot");
-      }, CHECK_INTERVAL_MS);
-    } catch (error) {
-      console.error("Camera access failed", error);
-
-      stopCamera();
-
-      setCameraError(
-        "Camera access was unavailable. Please allow camera access and try again."
-      );
-    }
-  }, [
-    captureAndSubmit,
-    identityStatus,
-    referenceReady,
-    stopCamera,
-  ]);
-
-  const getMatchMessage = () => {
-    switch (faceMatchStatus) {
-      case "MATCH":
-        return "Reference match detected.";
-      case "MISMATCH":
-        return "Reference mismatch logged for review.";
-      case "NO_FACE":
-        return "No face detected.";
-      case "MULTIPLE_FACES":
-        return "Multiple faces detected.";
-      case "UNAVAILABLE":
-        return "Face matching unavailable.";
-      default:
-        return "No face match recorded yet.";
-    }
-  };
+  if (loading) {
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
+          <div>
+            <p className="font-semibold text-slate-900">
+              Preparing proctoring
+            </p>
+            <p className="text-sm text-slate-500">
+              Checking identity and camera requirements...
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-            <Camera className="h-5 w-5" />
-            Proctoring Check-In
-          </h2>
+        <div className="flex items-start gap-3">
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+              active
+                ? "bg-emerald-100"
+                : "bg-slate-100"
+            }`}
+          >
+            {active ? (
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            ) : (
+              <Camera className="h-5 w-5 text-slate-600" />
+            )}
+          </div>
 
-          <p className="mt-1 text-sm text-gray-600">
-            Camera checks use your saved reference photo as a project-level
-            matching signal. They are not legal identity verification.
-          </p>
+          <div>
+            <h3 className="font-semibold text-slate-900">
+              Proctoring
+            </h3>
+
+            <p className="mt-1 text-sm text-slate-500">
+              {message}
+            </p>
+          </div>
         </div>
 
-        {cameraOn ? (
-          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
-            Camera active
-          </span>
-        ) : (
-          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
-            Camera off
+        {active && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Active
           </span>
         )}
-      </div>
-
-      <div className="mt-4 rounded-lg border border-gray-200 p-3">
-        <div className="text-xs font-medium uppercase text-gray-500">
-          Identity verification
-        </div>
-
-        <div className="mt-1 flex items-center gap-2 text-sm font-medium text-gray-900">
-          {identityStatus === "VERIFIED" ? (
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
-          ) : (
-            <ShieldAlert className="h-4 w-4 text-amber-600" />
-          )}
-
-          {identityLoading
-            ? "Checking verification..."
-            : identityStatus === "VERIFIED"
-              ? "Verified"
-              : identityStatus}
-        </div>
-
-        <p className="mt-1 text-xs text-gray-500">
-          Development mode uses the project's mock verification provider.
-        </p>
       </div>
 
       {cameraError && (
-        <div className="mt-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{cameraError}</span>
+        <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+
+          <div>
+            <p className="font-medium">
+              Camera monitoring unavailable
+            </p>
+            <p className="mt-1">
+              {cameraError}
+            </p>
+          </div>
         </div>
       )}
 
-      <div className="mt-5 overflow-hidden rounded-xl bg-gray-900">
-        <video
-          ref={videoRef}
-          className="aspect-video w-full object-cover"
-          muted
-          playsInline
-        />
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-gray-200 p-3">
-          <div className="text-xs font-medium uppercase text-gray-500">
-            Face signal
-          </div>
-
-          <div className="mt-1 flex items-center gap-2 text-sm font-medium text-gray-900">
-            {faceMatchStatus === "MATCH" ? (
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-            ) : faceMatchStatus ? (
-              <ShieldAlert className="h-4 w-4 text-amber-600" />
-            ) : null}
-
-            {getMatchMessage()}
-          </div>
-
-          {faceSimilarity !== null && (
-            <div className="mt-1 text-xs text-gray-500">
-              Similarity signal: {Math.round(faceSimilarity * 100)}%
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-lg border border-gray-200 p-3">
-          <div className="text-xs font-medium uppercase text-gray-500">
-            Review status
-          </div>
-
-          <div className="mt-1 text-sm font-medium text-gray-900">
-            {status.flagged_for_review
-              ? "Flagged for human review"
-              : "No review flag"}
-          </div>
-
-          <div className="mt-1 text-xs text-gray-500">
-            Strikes: {status.strike_count} / {status.strike_threshold}
-          </div>
-        </div>
-      </div>
-
-      {lastMessage && (
-        <div className="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
-          {lastMessage}
+      {!active && !starting && (
+        <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+          {identityVerified &&
+          referenceReady
+            ? "Camera monitoring will start automatically when the workspace is ready."
+            : "Identity verification and a face reference photo are required before monitored participation."}
         </div>
       )}
 
-      <div className="mt-5 flex flex-wrap gap-3">
-        {!cameraOn ? (
-          <button
-            type="button"
-            onClick={() => void startCamera()}
-            disabled={
-              identityLoading ||
-              identityStatus !== "VERIFIED" ||
-              !referenceReady ||
-              submitting
-            }
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Start camera check
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={stopCamera}
-            disabled={submitting}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-50"
-          >
-            Stop camera
-          </button>
-        )}
-      </div>
+      {starting && (
+        <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Starting secure camera monitoring...
+        </div>
+      )}
 
-      <p className="mt-4 text-xs leading-5 text-gray-500">
-        The browser performs the face comparison locally. Periodic snapshots
-        are submitted as review signals. A mismatch does not automatically
-        disqualify a participant.
-      </p>
+      {/* Camera element remains hidden from the participant UI. */}
+      <video
+        ref={videoRef}
+        className="hidden"
+        autoPlay
+        muted
+        playsInline
+      />
     </section>
   );
 }
