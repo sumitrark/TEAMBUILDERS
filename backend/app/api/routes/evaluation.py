@@ -23,6 +23,8 @@ from app.crud.evaluation import (
     get_my_evaluations,
     get_project_evaluations,
     get_project_score,
+    get_my_evaluation_for_project,
+    update_evaluation,
 )
 from app.crud.ai_evaluation import get_ai_evaluation_by_project
 
@@ -102,6 +104,24 @@ async def submit_evaluation(
             detail="You have already evaluated this project",
         )
 
+    if result == "INVALID_CRITERION_SCORES":
+        raise HTTPException(
+            status_code=400,
+            detail="Criterion scores are invalid or missing required criteria",
+        )
+
+    if result == "CRITERION_SCORE_OUT_OF_RANGE":
+        raise HTTPException(
+            status_code=400,
+            detail="One or more criterion scores are outside the allowed range",
+        )
+
+    if result == "INVALID_CRITERIA_WEIGHTS":
+        raise HTTPException(
+            status_code=400,
+            detail="Evaluation criteria weights are invalid (total weight must be > 0)",
+        )
+
     return result
 
 
@@ -158,6 +178,65 @@ async def project_score(
         db=db,
         project_id=project_id,
     )
+
+
+# =========================================================
+# MY EVALUATION FOR A SPECIFIC PROJECT
+# (called by the judge evaluation form to detect re-evaluation)
+# =========================================================
+
+@router.get(
+    "/project/{project_id}/my",
+    response_model=EvaluationResponse,
+)
+async def my_evaluation_for_project(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await get_my_evaluation_for_project(
+        db=db,
+        judge_id=current_user.id,
+        project_id=project_id,
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No evaluation found for this project",
+        )
+
+    return result
+
+
+# =========================================================
+# UPDATE EVALUATION
+# =========================================================
+
+@router.put(
+    "/{evaluation_id}",
+    response_model=EvaluationResponse,
+)
+async def update_evaluation_endpoint(
+    evaluation_id: UUID,
+    evaluation: EvaluationCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await update_evaluation(
+        db=db,
+        evaluation_id=evaluation_id,
+        judge_id=current_user.id,
+        data=evaluation,
+    )
+
+    if result == "NOT_FOUND":
+        raise HTTPException(
+            status_code=404,
+            detail="Evaluation not found or you are not the author",
+        )
+
+    return result
 
 
 # =========================================================

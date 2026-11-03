@@ -99,8 +99,11 @@ export async function submitProject(
   hackathonId: string,
   projectId: string
 ): Promise<SubmissionInfo> {
+  // The backend route is POST /projects/{projectId}/submit
+  // hackathonId is not needed in the URL (the backend derives
+  // the hackathon from the project's team_id).
   const res = await api.post(
-    `/hackathons/${hackathonId}/submissions/${projectId}`
+    `/projects/${projectId}/submit`
   );
   return res.data;
 }

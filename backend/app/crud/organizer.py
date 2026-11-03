@@ -990,7 +990,9 @@ async def get_organizer_projects(
     if not team_ids:
         return []
 
-    # Get projects belonging to those teams
+    # Get projects belonging to those teams, enriched with submission status
+    from app.models.submission import Submission
+
     project_result = await db.execute(
         select(Project)
         .where(
@@ -1001,7 +1003,42 @@ async def get_organizer_projects(
         )
     )
 
-    return project_result.scalars().all()
+    projects = project_result.scalars().all()
+
+    # Fetch submission statuses in one query
+    if projects:
+        project_ids = [p.id for p in projects]
+        submission_result = await db.execute(
+            select(Submission.project_id, Submission.status)
+            .where(
+                Submission.project_id.in_(project_ids),
+                Submission.status.in_(
+                    ["SUBMITTED", "LOCKED", "UNDER_REVIEW", "EVALUATED"]
+                ),
+            )
+            .distinct(Submission.project_id)
+        )
+        submitted_project_ids = {row[0] for row in submission_result.all()}
+    else:
+        submitted_project_ids = set()
+
+    # Return enriched dicts so the API layer can serialize cleanly
+    return [
+        {
+            "id": p.id,
+            "title": p.title,
+            "description": p.description,
+            "tech_stack": p.tech_stack,
+            "github_url": p.github_url,
+            "demo_url": p.demo_url,
+            "owner_id": p.owner_id,
+            "team_id": p.team_id,
+            "ai_tools_used": p.ai_tools_used,
+            "created_at": p.created_at,
+            "is_submitted": p.id in submitted_project_ids,
+        }
+        for p in projects
+    ]
 
 
 async def get_organizer_project(

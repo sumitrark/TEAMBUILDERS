@@ -421,6 +421,28 @@ export default function ManageHackathonPage() {
                   Evaluation Criteria
                 </button>
 
+                <button
+                  onClick={() =>
+                    router.push(
+                      `/organizer/hackathons/${hackathon.id}/projects`
+                    )
+                  }
+                  className="w-full rounded-xl border px-4 py-3 text-left text-sm font-medium hover:bg-gray-50"
+                >
+                  📁 Submitted Projects
+                </button>
+
+                <button
+                  onClick={() =>
+                    router.push(
+                      `/organizer/hackathons/${hackathon.id}/evaluation`
+                    )
+                  }
+                  className="w-full rounded-xl border px-4 py-3 text-left text-sm font-medium hover:bg-gray-50"
+                >
+                  📊 Evaluation & Results
+                </button>
+
               </div>
 
             </div>

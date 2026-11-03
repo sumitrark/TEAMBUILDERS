@@ -13,9 +13,11 @@ import {
   createEvaluation,
   getAiEvaluation,
   generateAiEvaluation,
+  getJudgeHackathonCriteria,
   JudgeProject,
   Evaluation,
   AiEvaluation,
+  EvaluationCriterion,
 } from "@/services/judge";
 
 export default function EvaluateProjectPage() {
@@ -24,60 +26,35 @@ export default function EvaluateProjectPage() {
   const router = useRouter();
 
   const projectId = params.projectId as string;
+  const hackathonId = searchParams.get("hackathon") || "";
 
-  const hackathonId =
-    searchParams.get("hackathon") || "";
+  const [project, setProject] = useState<JudgeProject | null>(null);
+  const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [criteria, setCriteria] = useState<EvaluationCriterion[]>([]);
 
-  const [project, setProject] =
-    useState<JudgeProject | null>(null);
+  const [aiEvaluation, setAiEvaluation] = useState<AiEvaluation | null>(null);
+  const [loadingAiEvaluation, setLoadingAiEvaluation] = useState(true);
+  const [generatingAiEvaluation, setGeneratingAiEvaluation] = useState(false);
+  const [aiEvaluationError, setAiEvaluationError] = useState("");
 
-  const [evaluation, setEvaluation] =
-    useState<Evaluation | null>(null);
+  // Legacy score fields (used when no configurable criteria exist)
+  const [innovation, setInnovation] = useState(5);
+  const [technical, setTechnical] = useState(5);
+  const [impact, setImpact] = useState(5);
+  const [presentation, setPresentation] = useState(5);
+  const [overall, setOverall] = useState(5);
 
-  const [aiEvaluation, setAiEvaluation] =
-    useState<AiEvaluation | null>(null);
+  // Configurable criterion scores: { criterionId: score }
+  const [criterionScores, setCriterionScores] = useState<Record<string, number>>({});
 
-  const [loadingAiEvaluation, setLoadingAiEvaluation] =
-    useState(true);
-
-  const [generatingAiEvaluation, setGeneratingAiEvaluation] =
-    useState(false);
-
-  const [aiEvaluationError, setAiEvaluationError] =
-    useState("");
-
-  const [innovation, setInnovation] =
-    useState(5);
-
-  const [technical, setTechnical] =
-    useState(5);
-
-  const [impact, setImpact] =
-    useState(5);
-
-  const [presentation, setPresentation] =
-    useState(5);
-
-  const [overall, setOverall] =
-    useState(5);
-
-  const [feedback, setFeedback] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [message, setMessage] =
-    useState("");
+  const [feedback, setFeedback] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   // =========================================================
-  // LOAD PROJECT + EXISTING EVALUATION
+  // LOAD PROJECT + CRITERIA + EXISTING EVALUATION
   // =========================================================
 
   useEffect(() => {
@@ -87,80 +64,52 @@ export default function EvaluateProjectPage() {
         setError("");
 
         if (!hackathonId) {
-          setError(
-            "Hackathon ID is missing."
-          );
+          setError("Hackathon ID is missing.");
           return;
         }
 
-        // -----------------------------------------------
-        // Load project
-        // -----------------------------------------------
-
-        const projectData =
-          await getJudgeProject(
-            hackathonId,
-            projectId
-          );
+        // Load project and criteria in parallel
+        const [projectData, criteriaData] = await Promise.all([
+          getJudgeProject(hackathonId, projectId),
+          getJudgeHackathonCriteria(hackathonId).catch(() => [] as EvaluationCriterion[]),
+        ]);
 
         setProject(projectData);
+        setCriteria(criteriaData);
 
-        // -----------------------------------------------
+        // Initialize criterion score state
+        if (criteriaData.length > 0) {
+          const initialScores: Record<string, number> = {};
+          criteriaData.forEach((c) => {
+            initialScores[c.id] = Math.ceil(c.max_score / 2);
+          });
+          setCriterionScores(initialScores);
+        }
+
         // Check whether this judge already evaluated it
-        // -----------------------------------------------
-
         try {
-          const existing =
-            await getMyEvaluation(
-              projectId
-            );
+          const existing = await getMyEvaluation(projectId);
 
           if (existing) {
             setEvaluation(existing);
+            setInnovation(existing.innovation_score);
+            setTechnical(existing.technical_score);
+            setImpact(existing.impact_score);
+            setPresentation(existing.presentation_score);
+            setOverall(existing.overall_score);
+            setFeedback(existing.feedback || "");
 
-            setInnovation(
-              existing.innovation_score
-            );
-
-            setTechnical(
-              existing.technical_score
-            );
-
-            setImpact(
-              existing.impact_score
-            );
-
-            setPresentation(
-              existing.presentation_score
-            );
-
-            setOverall(
-              existing.overall_score
-            );
-
-            setFeedback(
-              existing.feedback || ""
-            );
+            if (existing.criterion_scores) {
+              setCriterionScores(existing.criterion_scores);
+            }
           }
         } catch (evaluationError) {
-          console.error(
-            "Could not load existing evaluation:",
-            evaluationError
-          );
-
-          // Do not block project loading if
-          // there is no existing evaluation.
+          // 404 is expected when there's no existing evaluation — not an error
+          console.debug("No existing evaluation found:", evaluationError);
         }
       } catch (err: any) {
-        console.error(
-          "Failed to load project:",
-          err
-        );
-
-        setError(
-          err?.response?.data?.detail ||
-            "Failed to load project."
-        );
+        console.error("Failed to load project:", err);
+        setError(err?.response?.data?.detail || "Failed to load project.");
       } finally {
         setLoading(false);
       }
@@ -172,24 +121,17 @@ export default function EvaluateProjectPage() {
   }, [projectId, hackathonId]);
 
   // =========================================================
-  // LOAD EXISTING AI EVALUATION (independent of the main
-  // load() above so a slow/failed AI fetch never blocks the
-  // project details or the human evaluation form)
+  // LOAD EXISTING AI EVALUATION
   // =========================================================
 
   useEffect(() => {
     async function loadAiEvaluation() {
       try {
         setLoadingAiEvaluation(true);
-
         const existing = await getAiEvaluation(projectId);
-
         setAiEvaluation(existing);
       } catch (err) {
-        console.error(
-          "Failed to load AI evaluation:",
-          err
-        );
+        console.debug("Failed to load AI evaluation:", err);
       } finally {
         setLoadingAiEvaluation(false);
       }
@@ -208,19 +150,12 @@ export default function EvaluateProjectPage() {
     try {
       setGeneratingAiEvaluation(true);
       setAiEvaluationError("");
-
       const result = await generateAiEvaluation(projectId);
-
       setAiEvaluation(result);
     } catch (err: any) {
-      console.error(
-        "Failed to generate AI evaluation:",
-        err
-      );
-
+      console.error("Failed to generate AI evaluation:", err);
       setAiEvaluationError(
-        err?.response?.data?.detail ||
-          "Failed to generate AI evaluation."
+        err?.response?.data?.detail || "Failed to generate AI evaluation."
       );
     } finally {
       setGeneratingAiEvaluation(false);
@@ -231,20 +166,11 @@ export default function EvaluateProjectPage() {
   // SUBMIT EVALUATION
   // =========================================================
 
-  async function handleSubmit(
-    e: FormEvent<HTMLFormElement>
-  ) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    // -----------------------------------------------
-    // Prevent duplicate submission
-    // -----------------------------------------------
-
     if (evaluation) {
-      setError(
-        "You have already evaluated this project."
-      );
-
+      setError("You have already evaluated this project.");
       return;
     }
 
@@ -253,63 +179,35 @@ export default function EvaluateProjectPage() {
       setError("");
       setMessage("");
 
-      const data = {
+      const data: Parameters<typeof createEvaluation>[0] = {
         project_id: projectId,
-
-        innovation_score:
-          innovation,
-
-        technical_score:
-          technical,
-
-        impact_score:
-          impact,
-
-        presentation_score:
-          presentation,
-
-        overall_score:
-          overall,
-
-        feedback:
-          feedback.trim() || undefined,
+        innovation_score: innovation,
+        technical_score: technical,
+        impact_score: impact,
+        presentation_score: presentation,
+        overall_score: overall,
+        feedback: feedback.trim() || undefined,
       };
 
-      const created =
-        await createEvaluation(data);
+      // Include configurable criterion scores if the hackathon has criteria
+      if (criteria.length > 0) {
+        data.criterion_scores = criterionScores;
+      }
 
+      const created = await createEvaluation(data);
       setEvaluation(created);
-
-      setMessage(
-        "Evaluation submitted successfully."
-      );
+      setMessage("Evaluation submitted successfully.");
     } catch (err: any) {
-      console.error(
-        "Failed to submit evaluation:",
-        err
-      );
-
-      const status =
-        err?.response?.status;
-
-      const detail =
-        err?.response?.data?.detail;
+      console.error("Failed to submit evaluation:", err);
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
 
       if (status === 409) {
-        setError(
-          detail ||
-            "You have already evaluated this project."
-        );
+        setError(detail || "You have already evaluated this project.");
       } else if (status === 403) {
-        setError(
-          detail ||
-            "You are not authorized to evaluate this project."
-        );
+        setError(detail || "You are not authorized to evaluate this project.");
       } else {
-        setError(
-          detail ||
-            "Failed to submit evaluation."
-        );
+        setError(detail || "Failed to submit evaluation.");
       }
     } finally {
       setSaving(false);
@@ -317,24 +215,18 @@ export default function EvaluateProjectPage() {
   }
 
   // =========================================================
-  // LOADING
+  // LOADING / ERROR STATES
   // =========================================================
 
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-50 p-8">
         <div className="mx-auto max-w-4xl rounded-2xl border bg-white p-10 text-center shadow-sm">
-          <p className="text-gray-500">
-            Loading project...
-          </p>
+          <p className="text-gray-500">Loading project...</p>
         </div>
       </main>
     );
   }
-
-  // =========================================================
-  // ERROR WITHOUT PROJECT
-  // =========================================================
 
   if (error && !project) {
     return (
@@ -346,7 +238,6 @@ export default function EvaluateProjectPage() {
           >
             ← Back to Projects
           </button>
-
           <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
             {error}
           </div>
@@ -355,12 +246,12 @@ export default function EvaluateProjectPage() {
     );
   }
 
-  if (!project) {
-    return null;
-  }
+  if (!project) return null;
+
+  const isLegacyMode = criteria.length === 0;
 
   // =========================================================
-  // SCORE INPUT
+  // SCORE INPUT (legacy 1-10 range)
   // =========================================================
 
   function ScoreInput({
@@ -375,33 +266,69 @@ export default function EvaluateProjectPage() {
     return (
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <label className="font-semibold text-gray-700">
-            {label}
-          </label>
-
+          <label className="font-semibold text-gray-700">{label}</label>
           <span className="rounded-lg bg-violet-100 px-3 py-1 font-bold text-violet-700">
             {value}/10
           </span>
         </div>
-
         <input
           type="range"
           min="1"
           max="10"
           value={value}
           disabled={!!evaluation}
-          onChange={(e) =>
-            setValue(
-              Number(e.target.value)
-            )
-          }
+          onChange={(e) => setValue(Number(e.target.value))}
           className="w-full accent-violet-600 disabled:cursor-not-allowed disabled:opacity-60"
         />
-
         <div className="mt-1 flex justify-between text-xs text-gray-400">
           <span>1</span>
           <span>10</span>
         </div>
+      </div>
+    );
+  }
+
+  // =========================================================
+  // CRITERION SCORE INPUT (configurable, variable max)
+  // =========================================================
+
+  function CriterionInput({ criterion }: { criterion: EvaluationCriterion }) {
+    const value = criterionScores[criterion.id] ?? Math.ceil(criterion.max_score / 2);
+
+    return (
+      <div className="rounded-xl border bg-gray-50 p-4">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div>
+            <span className="font-semibold text-gray-800">{criterion.name}</span>
+            {criterion.description && (
+              <p className="mt-0.5 text-xs text-gray-500">{criterion.description}</p>
+            )}
+          </div>
+          <span className="shrink-0 rounded-lg bg-violet-100 px-3 py-1 font-bold text-violet-700">
+            {value}/{criterion.max_score}
+          </span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max={criterion.max_score}
+          value={value}
+          disabled={!!evaluation}
+          onChange={(e) =>
+            setCriterionScores((prev) => ({
+              ...prev,
+              [criterion.id]: Number(e.target.value),
+            }))
+          }
+          className="w-full accent-violet-600 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <div className="mt-1 flex justify-between text-xs text-gray-400">
+          <span>0</span>
+          <span>{criterion.max_score}</span>
+        </div>
+        <p className="mt-1 text-right text-xs text-gray-400">
+          Weight: {criterion.weight}
+        </p>
       </div>
     );
   }
@@ -414,10 +341,6 @@ export default function EvaluateProjectPage() {
     <main className="min-h-screen bg-slate-50 p-8">
       <div className="mx-auto max-w-5xl">
 
-        {/* ================================================= */}
-        {/* BACK */}
-        {/* ================================================= */}
-
         <button
           onClick={() => router.back()}
           className="mb-6 text-sm font-semibold text-violet-600 hover:text-violet-800"
@@ -425,23 +348,16 @@ export default function EvaluateProjectPage() {
           ← Back to Projects
         </button>
 
-        {/* ================================================= */}
         {/* PROJECT DETAILS */}
-        {/* ================================================= */}
-
         <div className="rounded-3xl border bg-white p-8 shadow-sm">
-
           <div className="flex flex-col justify-between gap-6 md:flex-row">
-
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-violet-600">
                 Project
               </p>
-
               <h1 className="mt-1 text-3xl font-bold text-gray-900">
                 {project.title}
               </h1>
-
               <p className="mt-2 text-gray-500">
                 Team:{" "}
                 <span className="font-mono font-semibold text-gray-700">
@@ -450,19 +366,7 @@ export default function EvaluateProjectPage() {
               </p>
             </div>
 
-            {project.ai_tools_used && (
-              <div className="mb-6 rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-700">
-                <span className="font-semibold">
-                  AI tools disclosed by the team:
-                </span>{" "}
-                {project.ai_tools_used}
-              </div>
-            )}
-
-            {/* LINKS */}
-
             <div className="flex gap-3">
-
               {project.github_url && (
                 <a
                   href={project.github_url}
@@ -473,7 +377,6 @@ export default function EvaluateProjectPage() {
                   GitHub
                 </a>
               )}
-
               {project.demo_url && (
                 <a
                   href={project.demo_url}
@@ -484,65 +387,45 @@ export default function EvaluateProjectPage() {
                   Live Demo
                 </a>
               )}
-
             </div>
           </div>
 
-          {/* DESCRIPTION */}
+          {project.ai_tools_used && (
+            <div className="mt-4 rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-700">
+              <span className="font-semibold">AI tools disclosed by the team:</span>{" "}
+              {project.ai_tools_used}
+            </div>
+          )}
 
           <div className="mt-8 border-t pt-6">
-
-            <h2 className="text-xl font-bold text-gray-900">
-              Project Description
-            </h2>
-
+            <h2 className="text-xl font-bold text-gray-900">Project Description</h2>
             <p className="mt-3 leading-7 text-gray-600">
-              {project.description ||
-                "No description provided."}
+              {project.description || "No description provided."}
             </p>
-
-            {/* TECH STACK */}
-
             {project.tech_stack && (
               <div className="mt-6">
-
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
                   Technology Stack
                 </h3>
-
-                <p className="mt-2 text-gray-700">
-                  {project.tech_stack}
-                </p>
-
+                <p className="mt-2 text-gray-700">{project.tech_stack}</p>
               </div>
             )}
-
           </div>
         </div>
 
-        {/* ================================================= */}
         {/* AI-ASSISTED EVALUATION */}
-        {/* ================================================= */}
-
         <div className="mt-6 rounded-3xl border bg-white p-8 shadow-sm">
-
           <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
-
             <div>
               <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">
                 ✨ AI-ASSISTED — NOT A REPLACEMENT FOR YOUR JUDGMENT
               </div>
-
-              <h2 className="text-2xl font-bold text-gray-900">
-                AI Evaluation
-              </h2>
-
+              <h2 className="text-2xl font-bold text-gray-900">AI Evaluation</h2>
               <p className="mt-1 text-sm text-gray-500">
-                A quick, automated read of this project to help you get
-                started. Your own scoring above is what counts.
+                A quick, automated read of this project to help you get started. Your own
+                scoring below is what counts.
               </p>
             </div>
-
             {!loadingAiEvaluation && (
               <button
                 type="button"
@@ -557,7 +440,6 @@ export default function EvaluateProjectPage() {
                     : "Generate AI Evaluation"}
               </button>
             )}
-
           </div>
 
           {aiEvaluationError && (
@@ -574,20 +456,16 @@ export default function EvaluateProjectPage() {
           ) : generatingAiEvaluation ? (
             <div className="flex items-center gap-3 rounded-xl border border-dashed border-violet-200 bg-violet-50/50 p-6 text-sm text-violet-600">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-violet-600" />
-              Analyzing project details, tech stack, and README...
+              Analyzing project details, tech stack, and README…
             </div>
           ) : !aiEvaluation ? (
             <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
-              No AI evaluation yet. Click &quot;Generate AI Evaluation&quot;
-              above to get an AI-assisted read of this project.
+              No AI evaluation yet. Click &ldquo;Generate AI Evaluation&rdquo; above to get
+              an AI-assisted read of this project.
             </div>
           ) : (
             <div className="space-y-8">
-
-              {/* SCORES */}
-
               <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-
                 {[
                   { label: "Overall", value: aiEvaluation.overall_score, max: 100 },
                   { label: "Innovation", value: aiEvaluation.innovation_score, max: 25 },
@@ -608,9 +486,7 @@ export default function EvaluateProjectPage() {
                     </p>
                     <p
                       className={`mt-1 text-2xl font-bold ${
-                        score.label === "Overall"
-                          ? "text-violet-700"
-                          : "text-gray-800"
+                        score.label === "Overall" ? "text-violet-700" : "text-gray-800"
                       }`}
                     >
                       {score.value}
@@ -620,26 +496,18 @@ export default function EvaluateProjectPage() {
                     </p>
                   </div>
                 ))}
-
               </div>
-
-              {/* UI/UX NOTES */}
 
               {aiEvaluation.ui_ux_notes && (
                 <div>
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
                     UI / UX Observations
                   </h3>
-                  <p className="mt-2 text-gray-700">
-                    {aiEvaluation.ui_ux_notes}
-                  </p>
+                  <p className="mt-2 text-gray-700">{aiEvaluation.ui_ux_notes}</p>
                 </div>
               )}
 
-              {/* STRENGTHS / WEAKNESSES */}
-
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-
                 <div>
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-600">
                     Strengths
@@ -649,10 +517,7 @@ export default function EvaluateProjectPage() {
                   ) : (
                     <ul className="mt-2 space-y-2">
                       {aiEvaluation.strengths.map((item, i) => (
-                        <li
-                          key={i}
-                          className="flex gap-2 text-sm text-gray-700"
-                        >
+                        <li key={i} className="flex gap-2 text-sm text-gray-700">
                           <span className="text-emerald-500">✓</span>
                           {item}
                         </li>
@@ -660,7 +525,6 @@ export default function EvaluateProjectPage() {
                     </ul>
                   )}
                 </div>
-
                 <div>
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-600">
                     Weaknesses
@@ -670,10 +534,7 @@ export default function EvaluateProjectPage() {
                   ) : (
                     <ul className="mt-2 space-y-2">
                       {aiEvaluation.weaknesses.map((item, i) => (
-                        <li
-                          key={i}
-                          className="flex gap-2 text-sm text-gray-700"
-                        >
+                        <li key={i} className="flex gap-2 text-sm text-gray-700">
                           <span className="text-amber-500">!</span>
                           {item}
                         </li>
@@ -681,10 +542,7 @@ export default function EvaluateProjectPage() {
                     </ul>
                   )}
                 </div>
-
               </div>
-
-              {/* SUGGESTIONS */}
 
               {aiEvaluation.suggestions.length > 0 && (
                 <div>
@@ -693,10 +551,7 @@ export default function EvaluateProjectPage() {
                   </h3>
                   <ul className="mt-2 space-y-2">
                     {aiEvaluation.suggestions.map((item, i) => (
-                      <li
-                        key={i}
-                        className="flex gap-2 text-sm text-gray-700"
-                      >
+                      <li key={i} className="flex gap-2 text-sm text-gray-700">
                         <span className="text-violet-500">→</span>
                         {item}
                       </li>
@@ -705,8 +560,6 @@ export default function EvaluateProjectPage() {
                 </div>
               )}
 
-              {/* POTENTIAL ISSUES */}
-
               {aiEvaluation.potential_issues.length > 0 && (
                 <div>
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-red-500">
@@ -714,10 +567,7 @@ export default function EvaluateProjectPage() {
                   </h3>
                   <ul className="mt-2 space-y-2">
                     {aiEvaluation.potential_issues.map((item, i) => (
-                      <li
-                        key={i}
-                        className="flex gap-2 text-sm text-gray-700"
-                      >
+                      <li key={i} className="flex gap-2 text-sm text-gray-700">
                         <span className="text-red-400">⚠</span>
                         {item}
                       </li>
@@ -730,41 +580,26 @@ export default function EvaluateProjectPage() {
                 Generated by {aiEvaluation.model_name} ·{" "}
                 {new Date(aiEvaluation.updated_at).toLocaleString()}
               </p>
-
             </div>
           )}
-
         </div>
 
-        {/* ================================================= */}
-        {/* EVALUATION */}
-        {/* ================================================= */}
-
+        {/* EVALUATION FORM */}
         <div className="mt-6 rounded-3xl border bg-white p-8 shadow-sm">
-
           <div className="mb-8">
-
             <p className="text-sm font-semibold uppercase tracking-wide text-violet-600">
               Judge Evaluation
             </p>
-
             <h2 className="mt-1 text-2xl font-bold text-gray-900">
-              {evaluation
-                ? "Evaluation Submitted"
-                : "Evaluate Project"}
+              {evaluation ? "Evaluation Submitted" : "Evaluate Project"}
             </h2>
-
             {evaluation && (
               <p className="mt-2 text-sm text-gray-500">
-                You have already evaluated this
-                project. Each judge can evaluate a
-                project only once.
+                You have already evaluated this project. Each judge can evaluate a project
+                only once.
               </p>
             )}
-
           </div>
-
-          {/* ERROR */}
 
           {error && (
             <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
@@ -772,100 +607,62 @@ export default function EvaluateProjectPage() {
             </div>
           )}
 
-          {/* SUCCESS */}
-
           {message && (
             <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-green-700">
               {message}
             </div>
           )}
 
-          {/* FORM */}
+          <form onSubmit={handleSubmit} className="space-y-8">
 
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-8"
-          >
-
-            {/* INNOVATION */}
-
-            <ScoreInput
-              label="Innovation"
-              value={innovation}
-              setValue={setInnovation}
-            />
-
-            {/* TECHNICAL */}
-
-            <ScoreInput
-              label="Technical Quality"
-              value={technical}
-              setValue={setTechnical}
-            />
-
-            {/* IMPACT */}
-
-            <ScoreInput
-              label="Impact"
-              value={impact}
-              setValue={setImpact}
-            />
-
-            {/* PRESENTATION */}
-
-            <ScoreInput
-              label="Presentation"
-              value={presentation}
-              setValue={setPresentation}
-            />
-
-            {/* OVERALL */}
-
-            <ScoreInput
-              label="Overall Score"
-              value={overall}
-              setValue={setOverall}
-            />
+            {isLegacyMode ? (
+              /* LEGACY 5-FIELD SCORING */
+              <>
+                <ScoreInput label="Innovation" value={innovation} setValue={setInnovation} />
+                <ScoreInput label="Technical Quality" value={technical} setValue={setTechnical} />
+                <ScoreInput label="Impact" value={impact} setValue={setImpact} />
+                <ScoreInput label="Presentation" value={presentation} setValue={setPresentation} />
+                <ScoreInput label="Overall Score" value={overall} setValue={setOverall} />
+              </>
+            ) : (
+              /* CONFIGURABLE CRITERIA SCORING */
+              <>
+                <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 text-sm text-violet-700">
+                  Score each criterion below. The final weighted score is calculated automatically.
+                </div>
+                <div className="space-y-4">
+                  {criteria.map((criterion) => (
+                    <CriterionInput key={criterion.id} criterion={criterion} />
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* FEEDBACK */}
-
             <div>
-
-              <label className="mb-2 block font-semibold text-gray-700">
-                Feedback
-              </label>
-
+              <label className="mb-2 block font-semibold text-gray-700">Feedback</label>
               <textarea
                 value={feedback}
                 disabled={!!evaluation}
-                onChange={(e) =>
-                  setFeedback(
-                    e.target.value
-                  )
-                }
+                onChange={(e) => setFeedback(e.target.value)}
                 rows={5}
                 maxLength={5000}
                 placeholder="Provide constructive feedback for the team..."
                 className="w-full rounded-xl border border-gray-300 p-4 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-gray-50"
               />
-
               <p className="mt-1 text-right text-xs text-gray-400">
                 {feedback.length}/5000
               </p>
-
             </div>
 
             {/* SUBMIT */}
-
             {!evaluation ? (
               <button
                 type="submit"
                 disabled={saving}
                 className="w-full rounded-xl bg-violet-600 py-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {saving
-                  ? "Submitting Evaluation..."
-                  : "Submit Evaluation"}
+                {saving ? "Submitting Evaluation…" : "Submit Evaluation"}
               </button>
             ) : (
               <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-center font-semibold text-green-700">
@@ -874,7 +671,6 @@ export default function EvaluateProjectPage() {
             )}
 
           </form>
-
         </div>
 
       </div>

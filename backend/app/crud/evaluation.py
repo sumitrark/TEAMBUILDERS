@@ -1,5 +1,5 @@
 from uuid import UUID
-
+from app.models.team_member import TeamMember
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -244,22 +244,16 @@ async def get_project_evaluations(
     return result.scalars().all()
 
 
+
 async def get_project_score(
     db: AsyncSession,
     project_id: UUID,
 ):
-    # --------------------------------------------------------
-    # Load evaluations for this project.
-    # --------------------------------------------------------
-
     evaluations_result = await db.execute(
         select(Evaluation)
-        .where(
-            Evaluation.project_id == project_id,
-        )
+        .where(Evaluation.project_id == project_id)
         .order_by(Evaluation.created_at.asc())
     )
-
     evaluations = evaluations_result.scalars().all()
 
     if not evaluations:
@@ -271,16 +265,9 @@ async def get_project_score(
             "official_score": 0,
         }
 
-    # --------------------------------------------------------
-    # Find the project's hackathon and active criteria.
-    # --------------------------------------------------------
-
     project_result = await db.execute(
-        select(Project).where(
-            Project.id == project_id,
-        )
+        select(Project).where(Project.id == project_id)
     )
-
     project = project_result.scalar_one_or_none()
 
     if project is None:
@@ -294,16 +281,17 @@ async def get_project_score(
 
     criteria = []
 
-    if project.hackathon_id is not None:
-        criteria = await _get_active_criteria(
-            db,
-            project.hackathon_id,
+    if project.team_id is not None:
+        team_result = await db.execute(
+            select(Team).where(Team.id == project.team_id)
         )
+        team = team_result.scalar_one_or_none()
 
-    # --------------------------------------------------------
-    # Configurable criteria are the official scoring system
-    # when they exist.
-    # --------------------------------------------------------
+        if team is not None and team.hackathon_id is not None:
+            criteria = await _get_active_criteria(
+                db,
+                team.hackathon_id,
+            )
 
     if criteria:
         calculated_scores = []
@@ -323,22 +311,14 @@ async def get_project_score(
             if score is not None:
                 calculated_scores.append(score)
 
-        if calculated_scores:
-            official_score = round(
-                sum(calculated_scores) / len(calculated_scores),
-                2,
-            )
-        else:
-            official_score = 0
-
+        official_score = (
+            round(sum(calculated_scores) / len(calculated_scores), 2)
+            if calculated_scores
+            else 0
+        )
         weighted_score = official_score
 
     else:
-        # ----------------------------------------------------
-        # Legacy scoring:
-        # five 1–10 scores -> normalized to 0–100.
-        # ----------------------------------------------------
-
         legacy_scores = []
 
         for evaluation in evaluations:
@@ -349,21 +329,12 @@ async def get_project_score(
                 + evaluation.presentation_score
                 + evaluation.overall_score
             )
-
-            normalized_score = (score_sum / 50) * 100
-            legacy_scores.append(normalized_score)
+            legacy_scores.append((score_sum / 50) * 100)
 
         official_score = round(
-            sum(legacy_scores) / len(legacy_scores),
-            2,
+            sum(legacy_scores) / len(legacy_scores), 2
         )
-
         weighted_score = None
-
-    # --------------------------------------------------------
-    # Keep the legacy response fields for compatibility while
-    # exposing the normalized official score for new features.
-    # --------------------------------------------------------
 
     average_score = round(
         sum(
@@ -380,8 +351,63 @@ async def get_project_score(
     return {
         "evaluation_count": len(evaluations),
         "average_score": average_score,
-        "total_score": round(official_score, 2),
+        "total_score": official_score,
         "weighted_score": weighted_score,
-        "official_score": round(official_score, 2),
+        "official_score": official_score,
     }
 
+
+
+async def get_my_evaluation_for_project(
+    db: AsyncSession,
+    judge_id: UUID,
+    project_id: UUID,
+):
+    """Return the current judge's evaluation for a specific project, or None."""
+    result = await db.execute(
+        select(Evaluation).where(
+            Evaluation.project_id == project_id,
+            Evaluation.judge_id == judge_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_evaluation(
+    db: AsyncSession,
+    evaluation_id: UUID,
+    judge_id: UUID,
+    data: "EvaluationCreate",  # noqa: F821 — forward ref, imported at call site
+):
+    """Allow a judge to update their own evaluation before it is submitted."""
+    result = await db.execute(
+        select(Evaluation).where(
+            Evaluation.id == evaluation_id,
+            Evaluation.judge_id == judge_id,
+        )
+    )
+    evaluation = result.scalar_one_or_none()
+
+    if evaluation is None:
+        return "NOT_FOUND"
+
+    # Update legacy score fields when provided.
+    for field in (
+        "innovation_score",
+        "technical_score",
+        "impact_score",
+        "presentation_score",
+        "overall_score",
+        "feedback",
+    ):
+        value = getattr(data, field, None)
+        if value is not None:
+            setattr(evaluation, field, value)
+
+    if data.criterion_scores is not None:
+        evaluation.criterion_scores = data.criterion_scores
+
+    await db.commit()
+    await db.refresh(evaluation)
+
+    return evaluation

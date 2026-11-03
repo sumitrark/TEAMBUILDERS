@@ -32,6 +32,7 @@ from app.crud.judge_invitation import (
     get_invitation_by_token,
     get_pending_invitations_for_user,
 )
+from app.crud.evaluation_criterion import get_hackathon_criteria
 
 router = APIRouter(
     prefix="/judge",
@@ -137,6 +138,36 @@ async def judge_projects(
         )
 
     return result
+
+
+@router.get(
+    "/hackathons/{hackathon_id}/criteria",
+)
+async def judge_hackathon_criteria(
+    hackathon_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Return active evaluation criteria for the hackathon.
+    Available to all authenticated judges assigned to the hackathon.
+    """
+    result = await get_judge_projects(
+        db=db,
+        user_id=current_user.id,
+        hackathon_id=hackathon_id,
+    )
+
+    if result == "NOT_ACTIVE_JUDGE":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not an active judge for this hackathon",
+        )
+
+    return await get_hackathon_criteria(
+        db=db,
+        hackathon_id=hackathon_id,
+        active_only=True,
+    )
 
 
 @router.get(

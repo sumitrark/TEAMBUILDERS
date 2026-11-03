@@ -27,9 +27,9 @@ from app.crud.organizer import (
     resend_organizer_judge_invitation,
     cancel_organizer_judge_invitation,
     get_organizer_project,
+    get_organizer_projects,
     remove_judge,
     get_organizer_analytics,
-
 )
 from app.crud.judge_project_assignment import (
     assign_project_to_judge,

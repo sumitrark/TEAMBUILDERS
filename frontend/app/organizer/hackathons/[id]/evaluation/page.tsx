@@ -7,6 +7,9 @@ import { api } from "@/lib/api";
 interface Judge {
   id: string;
   user_id: string;
+  name: string;
+  username?: string;
+  email: string;
   status: string;
 }
 
@@ -14,6 +17,7 @@ interface Project {
   id: string;
   title: string;
   team_id: string | null;
+  is_submitted?: boolean;
 }
 
 interface Assignment {
@@ -308,14 +312,14 @@ export default function OrganizerEvaluationPage() {
 
               {judges
                 .filter(
-                  (judge) => judge.status === "active"
+                  (judge) => judge.status === "active" || judge.status === "accepted"
                 )
                 .map((judge) => (
                   <option
                     key={judge.id}
                     value={judge.id}
                   >
-                    Judge {judge.user_id.slice(0, 8)}
+                    {judge.name || judge.email} ({judge.status})
                   </option>
                 ))}
             </select>
@@ -329,14 +333,16 @@ export default function OrganizerEvaluationPage() {
             >
               <option value="">Select project</option>
 
-              {projects.map((project) => (
-                <option
-                  key={project.id}
-                  value={project.id}
-                >
-                  {project.title}
-                </option>
-              ))}
+              {projects
+                .filter((p) => p.is_submitted)
+                .map((project) => (
+                  <option
+                    key={project.id}
+                    value={project.id}
+                  >
+                    {project.title}
+                  </option>
+                ))}
             </select>
 
             <button
@@ -383,8 +389,14 @@ export default function OrganizerEvaluationPage() {
                       </p>
 
                       <p className="text-sm text-gray-500">
-                        Judge{" "}
-                        {assignment.judge_id.slice(0, 8)}
+                        {(() => {
+                          const judge = judges.find(
+                            (j) => j.id === assignment.judge_id
+                          );
+                          return judge
+                            ? `${judge.name || judge.email}`
+                            : `Judge ${assignment.judge_id.slice(0, 8)}`;
+                        })()}
                       </p>
                     </div>
 
@@ -439,10 +451,7 @@ export default function OrganizerEvaluationPage() {
             <button
               type="button"
               onClick={scheduleAnnouncement}
-              disabled={
-                working ||
-                !progress?.all_projects_evaluated
-              }
+              disabled={working}
               className="rounded-xl bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Schedule Results

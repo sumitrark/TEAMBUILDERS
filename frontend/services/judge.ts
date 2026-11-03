@@ -27,6 +27,7 @@ export interface Evaluation {
   presentation_score: number;
   overall_score: number;
 
+  criterion_scores: Record<string, number> | null;
   feedback: string | null;
 
   created_at: string;
@@ -40,6 +41,7 @@ export interface EvaluationCreate {
   impact_score: number;
   presentation_score: number;
   overall_score: number;
+  criterion_scores?: Record<string, number>;
   feedback?: string;
 }
 
@@ -212,6 +214,33 @@ export async function generateAiEvaluation(
 ): Promise<AiEvaluation> {
   const response = await api.post(
     `/evaluations/ai/${projectId}`
+  );
+
+  return response.data;
+}
+
+
+// ============================================================
+// EVALUATION CRITERIA FOR A HACKATHON (judge-accessible)
+// ============================================================
+
+export interface EvaluationCriterion {
+  id: string;
+  hackathon_id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  max_score: number;
+  weight: number;
+  display_order: number;
+  is_active: boolean;
+}
+
+export async function getJudgeHackathonCriteria(
+  hackathonId: string
+): Promise<EvaluationCriterion[]> {
+  const response = await api.get<EvaluationCriterion[]>(
+    `/judge/hackathons/${hackathonId}/criteria`
   );
 
   return response.data;

@@ -424,6 +424,14 @@ export default function HackathonDetailsPage() {
     Register My Team
   </Link>
 
+  <Link
+    href={`/dashboard/hackathons/${hackathon.id}/results`}
+    className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3.5 font-semibold text-slate-700 transition hover:bg-gray-50"
+  >
+    <Trophy size={19} />
+    View Results
+  </Link>
+
 </div>
 
             {hackathon.website && (

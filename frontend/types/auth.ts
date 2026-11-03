@@ -23,6 +23,8 @@ export interface RegisterRequest {
   // Organizer fields
   organization?: string;
   designation?: string;
+
+  // Shared optional profile fields (organizer + judge)
   bio?: string;
   linkedin_url?: string;
   portfolio_url?: string;

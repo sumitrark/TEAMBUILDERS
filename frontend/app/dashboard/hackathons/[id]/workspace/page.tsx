@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -163,7 +164,7 @@ export default function WorkspacePage() {
   }, [secondsRemaining !== null]);
 
   async function handleSubmit() {
-    if (!data?.project) {
+    if (!data?.project || !isLive || submitting) {
       return;
     }
 
@@ -332,7 +333,7 @@ export default function WorkspacePage() {
                   type="button"
                   onClick={() =>
                     router.push(
-                      `/dashboard/teams/${data.team.id}/chat`
+                      `/dashboard/teams/${data.team?.id}/chat`
                     )
                   }
                   className="mt-4 flex w-full items-center justify-between rounded-xl border border-violet-200 bg-violet-50 p-4 text-left transition hover:border-violet-400 hover:bg-violet-100"
@@ -500,40 +501,42 @@ export default function WorkspacePage() {
           )}
 
           {/* SUBMISSION */}
-          {isLive && (
+          {data.project && (
             <section className="rounded-2xl border border-violet-200 bg-violet-50 p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="font-bold text-violet-950">
-                    {data.project
-                      ? "Ready to submit?"
-                      : "Submission"}
+                    {isCompleted
+                      ? "Submission closed"
+                      : "Project submission"}
                   </h2>
 
                   <p className="mt-1 text-sm text-violet-700">
-                    {data.project
-                      ? data.submission_count > 0
-                        ? `${data.submission_count} submission version${
-                            data.submission_count === 1
-                              ? ""
-                              : "s"
-                          } created.`
-                        : "Your team has not submitted a version yet."
-                      : "Create your team project first to activate submission."}
+                    {isCompleted
+                      ? "This hackathon has ended."
+                      : !isLive
+                        ? "Submission will be available when the hackathon goes live."
+                        : data.submission_count > 0
+                          ? `${data.submission_count} submission version(s) created.`
+                          : "Your project is ready for submission."}
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={!data.project || submitting}
+                  disabled={!isLive || submitting}
                   className="flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3 font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <CheckCircle2 className="h-5 w-5" />
 
                   {submitting
                     ? "Submitting..."
-                    : "Submit Project"}
+                    : isCompleted
+                      ? "Submission Closed"
+                      : !isLive
+                        ? "Waiting for Hackathon"
+                        : "Submit Project"}
                 </button>
               </div>
             </section>
@@ -603,4 +606,4 @@ export default function WorkspacePage() {
       </div>
     </div>
   );
-}           
+}

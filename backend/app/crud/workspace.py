@@ -1,3 +1,4 @@
+from app.models.team_hackathon import TeamHackathon
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -11,6 +12,7 @@ from app.models.project import Project
 from app.models.submission import Submission
 from app.models.participant import Participant
 from app.models.user import User
+
 from app.services.hackathon_lifecycle import (
     get_hackathon_status,
     get_time_remaining_seconds,
@@ -18,13 +20,6 @@ from app.services.hackathon_lifecycle import (
 
 
 def _presence_status(last_seen_at: datetime | None) -> str:
-    """
-    Presence for teammates only.
-
-    ONLINE  = heartbeat within 45 seconds
-    AWAY    = heartbeat within 5 minutes
-    OFFLINE = older than 5 minutes or never seen
-    """
     if last_seen_at is None:
         return "OFFLINE"
 
@@ -49,13 +44,24 @@ async def get_workspace(
     user_id: UUID,
     hackathon_id: UUID,
 ):
+    # --------------------------------------------------------
+    # HACKATHON
+    # --------------------------------------------------------
+
     hackathon_result = await db.execute(
-        select(Hackathon).where(Hackathon.id == hackathon_id)
+        select(Hackathon).where(
+            Hackathon.id == hackathon_id
+        )
     )
+
     hackathon = hackathon_result.scalar_one_or_none()
 
     if hackathon is None:
         return "HACKATHON_NOT_FOUND"
+
+    # --------------------------------------------------------
+    # PARTICIPANT
+    # --------------------------------------------------------
 
     participant_result = await db.execute(
         select(Participant).where(
@@ -63,29 +69,44 @@ async def get_workspace(
             Participant.user_id == user_id,
         )
     )
+
     participant = participant_result.scalar_one_or_none()
 
     if participant is None:
         return "NOT_REGISTERED"
 
+    
     # --------------------------------------------------------
-    # Resolve the participant's team.
+    # RESOLVE OR CREATE THE PARTICIPANT'S TEAM
     # --------------------------------------------------------
 
-    team_member_result = await db.execute(
-        select(TeamMember, Team)
-        .join(Team, TeamMember.team_id == Team.id)
-        .where(
-            TeamMember.user_id == user_id,
-            Team.hackathon_id == hackathon_id,
+    team = None
+
+    # First check the participant's registered team.
+    if participant.team_id:
+        team_result = await db.execute(
+            select(Team).where(
+                Team.id == participant.team_id,
+                Team.hackathon_id == hackathon_id,
+            )
         )
-    )
+        team = team_result.scalar_one_or_none()
 
-    row = team_member_result.first()
-    team = row[1] if row else None
+    # Check TeamMember records.
+    if team is None:
+        team_member_result = await db.execute(
+            select(TeamMember, Team)
+            .join(Team, TeamMember.team_id == Team.id)
+            .where(
+                TeamMember.user_id == user_id,
+                Team.hackathon_id == hackathon_id,
+            )
+        )
 
-    # Existing projects may have been created through the team-owner
-    # path without a TeamMember row, so preserve that fallback.
+        row = team_member_result.first()
+        team = row[1] if row else None
+
+    # Check teams owned by the participant.
     if team is None:
         owned_result = await db.execute(
             select(Team).where(
@@ -96,37 +117,169 @@ async def get_workspace(
         team = owned_result.scalar_one_or_none()
 
     # --------------------------------------------------------
-    # Shared project + latest submission
+    # FIND EXISTING SOLO PROJECT
+    # --------------------------------------------------------
+
+    solo_project = None
+
+    if team is None:
+        solo_result = await db.execute(
+            select(Project)
+            .where(
+                Project.owner_id == user_id,
+                Project.team_id.is_(None),
+            )
+            .order_by(Project.created_at.desc())
+        )
+
+        solo_project = solo_result.scalars().first()
+
+        # Create a one-person team for this participant.
+        user_result = await db.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = user_result.scalar_one_or_none()
+
+        display_name = (
+            user.full_name if user and user.full_name
+            else user.email if user
+            else "Participant"
+        )
+
+        team = Team(
+            name=f"{display_name[:80]}'s Solo Team",
+            description="Individual hackathon participation",
+            max_members=1,
+            owner_id=user_id,
+            hackathon_id=hackathon_id,
+        )
+
+        db.add(team)
+        await db.flush()
+
+        # Add the participant as a team member.
+        db.add(
+            TeamMember(
+                team_id=team.id,
+                user_id=user_id,
+                role="owner",
+            )
+        )
+
+        # Register the team for this hackathon.
+        db.add(
+            TeamHackathon(
+                team_id=team.id,
+                hackathon_id=hackathon_id,
+                status="registered",
+            )
+        )
+
+        # Connect the participant to the team.
+        participant.team_id = team.id
+
+        # Preserve the existing project.
+        if solo_project is not None:
+            solo_project.team_id = team.id
+
+        await db.commit()
+        await db.refresh(team)
+
+    else:
+        # Ensure existing team registration is connected.
+        participant.team_id = team.id
+
+        membership_result = await db.execute(
+            select(TeamMember).where(
+                TeamMember.team_id == team.id,
+                TeamMember.user_id == user_id,
+            )
+        )
+
+        if membership_result.scalar_one_or_none() is None:
+            db.add(
+                TeamMember(
+                    team_id=team.id,
+                    user_id=user_id,
+                    role="owner" if team.owner_id == user_id else "member",
+                )
+            )
+
+        registration_result = await db.execute(
+            select(TeamHackathon).where(
+                TeamHackathon.team_id == team.id,
+                TeamHackathon.hackathon_id == hackathon_id,
+            )
+        )
+
+        if registration_result.scalar_one_or_none() is None:
+            db.add(
+                TeamHackathon(
+                    team_id=team.id,
+                    hackathon_id=hackathon_id,
+                    status="registered",
+                )
+            )
+
+        await db.commit()
+
+    # --------------------------------------------------------
+    # FIND PROJECT
     # --------------------------------------------------------
 
     project = None
-    latest_submission = None
-    submission_count = 0
 
     if team is not None:
         project_result = await db.execute(
             select(Project)
             .where(Project.team_id == team.id)
-            .order_by(Project.created_at.asc())
+            .order_by(Project.created_at.desc())
         )
+
         project = project_result.scalars().first()
 
-        if project is not None:
-            submission_result = await db.execute(
-                select(Submission)
-                .where(Submission.project_id == project.id)
-                .order_by(Submission.version_number.desc())
+    # Solo project fallback.
+    # Only retrieve an unassigned project owned by this participant.
+    if project is None:
+        solo_project_result = await db.execute(
+            select(Project)
+            .where(
+                Project.owner_id == user_id,
+                Project.team_id.is_(None),
             )
+            .order_by(Project.created_at.desc())
+        )
 
-            submissions = submission_result.scalars().all()
-
-            latest_submission = (
-                submissions[0] if submissions else None
-            )
-            submission_count = len(submissions)
+        project = solo_project_result.scalars().first()
 
     # --------------------------------------------------------
-    # Shared team members + presence
+    # SUBMISSIONS
+    # --------------------------------------------------------
+
+    latest_submission = None
+    submission_count = 0
+
+    if project is not None:
+        submission_result = await db.execute(
+            select(Submission)
+            .where(
+                Submission.project_id == project.id
+            )
+            .order_by(
+                Submission.version_number.desc()
+            )
+        )
+
+        submissions = submission_result.scalars().all()
+
+        latest_submission = (
+            submissions[0] if submissions else None
+        )
+
+        submission_count = len(submissions)
+
+    # --------------------------------------------------------
+    # TEAM MEMBERS
     # --------------------------------------------------------
 
     team_members = []
@@ -142,7 +295,10 @@ async def get_workspace(
                 Participant,
                 (
                     (Participant.user_id == User.id)
-                    & (Participant.hackathon_id == hackathon_id)
+                    & (
+                        Participant.hackathon_id
+                        == hackathon_id
+                    )
                 ),
             )
             .where(
@@ -167,14 +323,23 @@ async def get_workspace(
                 }
             )
 
+    # --------------------------------------------------------
+    # RESPONSE
+    # --------------------------------------------------------
+
     return {
         "hackathon": {
             "id": hackathon.id,
             "title": hackathon.title,
             "description": hackathon.description,
         },
+
         "lifecycle_status": get_hackathon_status(hackathon),
-        "seconds_remaining": get_time_remaining_seconds(hackathon),
+
+        "seconds_remaining": get_time_remaining_seconds(
+            hackathon
+        ),
+
         "team": (
             {
                 "id": team.id,
@@ -183,7 +348,9 @@ async def get_workspace(
             if team
             else None
         ),
+
         "team_members": team_members,
+
         "project": (
             {
                 "id": project.id,
@@ -198,22 +365,23 @@ async def get_workspace(
             if project
             else None
         ),
+
         "latest_submission_version": (
             latest_submission.version_number
             if latest_submission
             else None
         ),
+
         "submitted_at": (
             latest_submission.submitted_at
             if latest_submission
             else None
         ),
+
         "submission_count": submission_count,
 
-        # These are workflow fields. They are not camera/face
-        # information and should not be displayed as proctoring
-        # details in the participant UI.
         "proctoring_strikes": participant.proctoring_strikes,
+
         "flagged_for_review": participant.flagged_for_review,
     }
 

@@ -10,6 +10,7 @@ from app.models.evaluation_criterion import EvaluationCriterion
 from app.models.hackathon import Hackathon
 from app.models.evaluation import Evaluation
 from app.models.project import Project
+from app.models.team import Team
 from app.schemas.evaluation_criterion import (
     EvaluationCriterionCreate,
     EvaluationCriterionUpdate,
@@ -49,10 +50,13 @@ async def _criteria_are_locked(
         return True
 
     # Also lock criteria once any evaluation has been submitted.
+    # Traverse: Evaluation → Project → Team → hackathon_id
+    # (Project has no direct hackathon_id column)
     evaluation_result = await db.execute(
         select(Evaluation.id)
         .join(Project, Evaluation.project_id == Project.id)
-        .where(Project.hackathon_id == hackathon.id)
+        .join(Team, Project.team_id == Team.id)
+        .where(Team.hackathon_id == hackathon.id)
         .limit(1)
     )
 

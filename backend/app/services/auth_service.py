@@ -190,10 +190,33 @@ async def register_user(
         portfolio_url=payload.portfolio_url,
     )
 
-    return await create_user(
+    user = await create_user(
         db,
         user,
     )
+
+    # -----------------------------------------------------
+    # BACKFILL invited_user_id ON THE INVITATION
+    #
+    # Now that the user account exists we can link the
+    # JudgeInvitation record so the in-app /dashboard/invitations
+    # page (which queries by invited_user_id OR email) works
+    # correctly immediately after registration — before the
+    # first explicit accept.
+    # -----------------------------------------------------
+
+    if payload.role == "judge" and payload.invitation_token:
+        from app.crud.judge_invitation import get_invitation_by_token
+
+        inv = await get_invitation_by_token(
+            db, payload.invitation_token
+        )
+
+        if inv is not None and inv.invited_user_id is None:
+            inv.invited_user_id = user.id
+            await db.commit()
+
+    return user
 
 
 # =========================================================

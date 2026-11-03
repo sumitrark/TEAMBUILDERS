@@ -148,6 +148,52 @@ async def schedule_results_announcement(
     await db.commit()
     await db.refresh(hackathon)
 
+    # --------------------------------------------------------
+    # Notify all participants in this hackathon about results.
+    # --------------------------------------------------------
+    from app.models.participant import Participant
+    from app.crud.notification import create_notification
+    from datetime import timezone
+
+    participants_result = await db.execute(
+        select(Participant).where(
+            Participant.hackathon_id == hackathon_id,
+        )
+    )
+    participants = participants_result.scalars().all()
+
+    now = datetime.now(timezone.utc)
+    is_published = announcement_at <= now
+
+    for participant in participants:
+        try:
+            if is_published:
+                await create_notification(
+                    db=db,
+                    user_id=participant.user_id,
+                    notification_type="results_published",
+                    title="Results Announced!",
+                    message=(
+                        f"The results for {hackathon.title} have been announced. "
+                        "Check the leaderboard to see your ranking."
+                    ),
+                    action_url=f"/dashboard/hackathons/{hackathon_id}/results",
+                )
+            else:
+                await create_notification(
+                    db=db,
+                    user_id=participant.user_id,
+                    notification_type="results_scheduled",
+                    title="Results Scheduled",
+                    message=(
+                        f"Results for {hackathon.title} will be announced at "
+                        f"{announcement_at.strftime('%Y-%m-%d %H:%M UTC')}."
+                    ),
+                    action_url=f"/dashboard/hackathons/{hackathon_id}/results",
+                )
+        except Exception:
+            pass  # Never block the core action
+
     return hackathon
 
 

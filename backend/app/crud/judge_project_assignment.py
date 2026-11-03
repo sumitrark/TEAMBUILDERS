@@ -133,6 +133,33 @@ async def assign_project_to_judge(
     await db.commit()
     await db.refresh(assignment)
 
+    # --------------------------------------------------------
+    # Notify the judge about the new assignment.
+    # --------------------------------------------------------
+    from app.crud.notification import create_notification
+    from app.models.user import User
+
+    user_result = await db.execute(
+        select(User).where(User.id == judge.user_id)
+    )
+    judge_user = user_result.scalar_one_or_none()
+
+    if judge_user is not None:
+        try:
+            await create_notification(
+                db=db,
+                user_id=judge_user.id,
+                notification_type="judge_assignment",
+                title="New Project Assigned",
+                message=(
+                    f"You have been assigned to evaluate \"{project.title}\" "
+                    f"in {hackathon.title}."
+                ),
+                action_url=f"/judge/accept/projects/{project_id}?hackathon={hackathon_id}",
+            )
+        except Exception:
+            pass  # Never let notification failure block the assignment
+
     return assignment
 
 
