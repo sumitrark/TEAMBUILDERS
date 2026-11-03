@@ -1,3 +1,4 @@
+
 from uuid import UUID
 
 from fastapi import (
@@ -6,7 +7,6 @@ from fastapi import (
     HTTPException,
     status,
 )
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -84,6 +84,12 @@ async def submit_evaluation(
             detail="Judge is not assigned to this hackathon",
         )
 
+    if result == "PROJECT_NOT_ASSIGNED":
+        raise HTTPException(
+            status_code=403,
+            detail="This project is not assigned to you",
+        )
+
     if result == "SELF_EVALUATION_NOT_ALLOWED":
         raise HTTPException(
             status_code=403,
@@ -157,10 +163,8 @@ async def project_score(
 # =========================================================
 # AI-ASSISTED EVALUATION
 #
-# Advisory only - never authoritative. The human Evaluation
-# table above remains the score that counts; this is a
-# separate, clearly-labeled AI read to help a judge get
-# started, restricted to judges/organizers.
+# Advisory only - never authoritative. Human evaluations
+# remain the official scores.
 # =========================================================
 
 @router.post(
@@ -215,7 +219,10 @@ async def get_ai_evaluation_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    result = await get_ai_evaluation_by_project(db, project_id)
+    result = await get_ai_evaluation_by_project(
+        db,
+        project_id,
+    )
 
     if not result:
         raise HTTPException(
@@ -224,4 +231,3 @@ async def get_ai_evaluation_endpoint(
         )
 
     return result
-

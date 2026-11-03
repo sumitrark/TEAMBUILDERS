@@ -7,7 +7,7 @@ from fastapi import (
     status,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from datetime import datetime
 from app.db.database import get_db
 from app.dependencies.organizer import get_current_organizer
 
@@ -29,6 +29,17 @@ from app.crud.organizer import (
     get_organizer_project,
     remove_judge,
     get_organizer_analytics,
+
+)
+from app.crud.judge_project_assignment import (
+    assign_project_to_judge,
+    remove_project_assignment,
+    get_hackathon_assignments,
+)
+from app.crud.organizer_results import (
+    get_evaluation_progress,
+    schedule_results_announcement,
+    clear_results_announcement,
 )
 
 from app.core.config import settings
@@ -39,10 +50,18 @@ from app.schemas.organizer import (
 )
 from app.schemas.judge import JudgeInviteRequest
 from app.schemas.judge_invitation import JudgeInvitationResponse
+from app.schemas.judge_project_assignment import (
+    JudgeProjectAssignmentCreate,
+    JudgeProjectAssignmentResponse,
+)
 
 router = APIRouter(
     prefix="/organizer",
     tags=["Organizer"],
+)
+from app.schemas.results import (
+    ResultsAnnouncementRequest,
+    ResultsAnnouncementResponse,
 )
 
 
@@ -594,6 +613,231 @@ async def remove_hackathon_judge(
         )
 
     return {"message": "Judge removed successfully"}
+# ============================================================
+# JUDGE PROJECT ASSIGNMENTS
+# ============================================================
+
+@router.get(
+    "/hackathons/{hackathon_id}/assignments",
+    response_model=list[JudgeProjectAssignmentResponse],
+)
+async def list_judge_project_assignments(
+    hackathon_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_organizer),
+):
+    result = await get_hackathon_assignments(
+        db=db,
+        organizer_id=current_user.id,
+        hackathon_id=hackathon_id,
+    )
+
+    if result == "HACKATHON_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found or you do not own it",
+        )
+
+    return result
+
+
+@router.post(
+    "/hackathons/{hackathon_id}/assignments",
+    response_model=JudgeProjectAssignmentResponse,
+)
+async def create_judge_project_assignment(
+    hackathon_id: UUID,
+    payload: JudgeProjectAssignmentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_organizer),
+):
+    result = await assign_project_to_judge(
+        db=db,
+        organizer_id=current_user.id,
+        hackathon_id=hackathon_id,
+        judge_id=payload.judge_id,
+        project_id=payload.project_id,
+    )
+
+    if result == "HACKATHON_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found or you do not own it",
+        )
+
+    if result == "JUDGE_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Judge not found for this hackathon",
+        )
+
+    if result == "PROJECT_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found for this hackathon",
+        )
+
+    if result == "PROJECT_HAS_NO_TEAM":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Project does not belong to a team",
+        )
+
+    if result == "PROJECT_NOT_SUBMITTED":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only submitted projects can be assigned to judges",
+        )
+
+    if result == "SELF_ASSIGNMENT_NOT_ALLOWED":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A judge cannot be assigned their own team's project",
+        )
+
+    if result == "ALREADY_ASSIGNED":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This project is already assigned to this judge",
+        )
+
+    return result
+
+
+@router.delete(
+    "/hackathons/{hackathon_id}/assignments/{judge_id}/{project_id}",
+)
+async def delete_judge_project_assignment(
+    hackathon_id: UUID,
+    judge_id: UUID,
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_organizer),
+):
+    result = await remove_project_assignment(
+        db=db,
+        organizer_id=current_user.id,
+        hackathon_id=hackathon_id,
+        judge_id=judge_id,
+        project_id=project_id,
+    )
+
+    if result == "HACKATHON_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found or you do not own it",
+        )
+
+    if result == "JUDGE_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Judge not found for this hackathon",
+        )
+
+    if result == "ASSIGNMENT_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found",
+        )
+
+    return {
+        "message": "Judge project assignment removed successfully"
+    }
+# ============================================================
+# EVALUATION PROGRESS & RESULTS ANNOUNCEMENT
+# ============================================================
+
+@router.get(
+    "/hackathons/{hackathon_id}/evaluation-progress",
+)
+async def evaluation_progress(
+    hackathon_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_organizer),
+):
+    result = await get_evaluation_progress(
+        db=db,
+        organizer_id=current_user.id,
+        hackathon_id=hackathon_id,
+    )
+
+    if result == "HACKATHON_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found or you do not own it",
+        )
+
+    return result
+
+
+@router.put(
+    "/hackathons/{hackathon_id}/results-announcement",
+)
+async def schedule_results(
+    hackathon_id: UUID,
+    payload: ResultsAnnouncementRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_organizer),
+):
+    result = await schedule_results_announcement(
+        db=db,
+        organizer_id=current_user.id,
+        hackathon_id=hackathon_id,
+        announcement_at=payload.announcement_at,
+    )
+
+    if result == "HACKATHON_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found or you do not own it",
+        )
+
+    if result == "TIMEZONE_REQUIRED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="announcement_at must include a timezone",
+        )
+
+    if result == "EVALUATIONS_INCOMPLETE":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="All submitted projects must be evaluated before results can be announced",
+        )
+
+    return {
+        "hackathon_id": result.id,
+        "announcement_at": result.results_announcement_at,
+        "published": (
+            result.results_announcement_at is not None
+            and result.results_announcement_at
+            <= datetime.now(result.results_announcement_at.tzinfo)
+        ),
+    }
+
+
+@router.delete(
+    "/hackathons/{hackathon_id}/results-announcement",
+)
+async def clear_results(
+    hackathon_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_organizer),
+):
+    result = await clear_results_announcement(
+        db=db,
+        organizer_id=current_user.id,
+        hackathon_id=hackathon_id,
+    )
+
+    if result == "HACKATHON_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found or you do not own it",
+        )
+
+    return {
+        "message": "Results announcement cancelled",
+    }
 # ============================================================
 # ANALYTICS
 # ============================================================

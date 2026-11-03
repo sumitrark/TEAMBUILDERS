@@ -1,0 +1,208 @@
+﻿from uuid import UUID
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from jose import JWTError
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import decode_token
+from app.db.database import AsyncSessionLocal, get_db
+from app.dependencies.current_user import get_current_user
+from app.models.team import Team
+from app.models.team_member import TeamMember
+from app.models.team_message import TeamMessage
+from app.models.user import User
+
+router = APIRouter(prefix="/team-chat", tags=["Team Chat"])
+
+
+class MessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class MessageOut(BaseModel):
+    id: UUID
+    team_id: UUID
+    sender_id: UUID
+    sender_name: str
+    content: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+async def _has_team_access(db: AsyncSession, team_id: UUID, user_id: UUID) -> bool:
+    team = await db.scalar(select(Team).where(Team.id == team_id))
+    if not team:
+        return False
+    if team.owner_id == user_id:
+        return True
+    membership = await db.scalar(
+        select(TeamMember.id).where(
+            TeamMember.team_id == team_id,
+            TeamMember.user_id == user_id,
+        )
+    )
+    return membership is not None
+
+
+async def _require_access(db: AsyncSession, team_id: UUID, user_id: UUID) -> None:
+    if not await _has_team_access(db, team_id, user_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Team not found or you are not a member",
+        )
+
+
+def _message_payload(message: TeamMessage, sender_name: str) -> dict:
+    return {
+        "id": str(message.id),
+        "team_id": str(message.team_id),
+        "sender_id": str(message.sender_id),
+        "sender_name": sender_name,
+        "content": message.content,
+        "created_at": message.created_at.isoformat(),
+    }
+
+
+class TeamChatConnections:
+    def __init__(self):
+        self.connections: dict[str, set[WebSocket]] = {}
+
+    async def connect(self, team_id: UUID, websocket: WebSocket):
+        await websocket.accept()
+        self.connections.setdefault(str(team_id), set()).add(websocket)
+
+    def disconnect(self, team_id: UUID, websocket: WebSocket):
+        sockets = self.connections.get(str(team_id), set())
+        sockets.discard(websocket)
+        if not sockets:
+            self.connections.pop(str(team_id), None)
+
+    async def broadcast(self, team_id: UUID, payload: dict):
+        stale = []
+        for socket in list(self.connections.get(str(team_id), set())):
+            try:
+                await socket.send_json(payload)
+            except Exception:
+                stale.append(socket)
+        for socket in stale:
+            self.disconnect(team_id, socket)
+
+
+manager = TeamChatConnections()
+
+
+@router.get("/{team_id}/messages", response_model=list[MessageOut])
+async def get_team_messages(
+    team_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _require_access(db, team_id, current_user.id)
+    rows = (
+        await db.execute(
+            select(TeamMessage, User.full_name)
+            .join(User, User.id == TeamMessage.sender_id)
+            .where(TeamMessage.team_id == team_id)
+            .order_by(TeamMessage.created_at.desc())
+            .limit(100)
+        )
+    ).all()
+    rows.reverse()
+    return [
+        MessageOut(
+            id=message.id,
+            team_id=message.team_id,
+            sender_id=message.sender_id,
+            sender_name=sender_name,
+            content=message.content,
+            created_at=message.created_at,
+        )
+        for message, sender_name in rows
+    ]
+
+
+@router.post("/{team_id}/messages", response_model=MessageOut)
+async def send_team_message(
+    team_id: UUID,
+    body: MessageCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _require_access(db, team_id, current_user.id)
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="Message cannot be empty")
+    message = TeamMessage(
+        team_id=team_id,
+        sender_id=current_user.id,
+        content=content,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(message)
+    await db.commit()
+    await db.refresh(message)
+    payload = _message_payload(message, current_user.full_name)
+    await manager.broadcast(team_id, payload)
+    return MessageOut(**payload)
+
+
+@router.websocket("/ws/{team_id}")
+async def team_chat_websocket(websocket: WebSocket, team_id: UUID, token: str = ""):
+    # Authenticate the access token before accepting the socket.
+    try:
+        payload = decode_token(token)
+        if payload.get("type") != "access" or not payload.get("sub"):
+            await websocket.close(code=4401)
+            return
+        user_id = UUID(payload["sub"])
+    except (JWTError, ValueError, TypeError):
+        await websocket.close(code=4401)
+        return
+
+    async with AsyncSessionLocal() as db:
+        user = await db.scalar(
+            select(User).where(User.id == user_id, User.is_active.is_(True))
+        )
+        if not user or not await _has_team_access(db, team_id, user_id):
+            await websocket.close(code=4403)
+            return
+
+    await manager.connect(team_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            content = str(data.get("content", "")).strip() if isinstance(data, dict) else ""
+            if not content:
+                continue
+            if len(content) > 4000:
+                await websocket.send_json({"type": "error", "detail": "Message is too long (max 4000 characters)."})
+                continue
+
+            async with AsyncSessionLocal() as db:
+                if not await _has_team_access(db, team_id, user_id):
+                    await websocket.close(code=4403)
+                    break
+                sender = await db.scalar(select(User).where(User.id == user_id))
+                if not sender or not sender.is_active:
+                    await websocket.close(code=4401)
+                    break
+                message = TeamMessage(
+                    team_id=team_id,
+                    sender_id=user_id,
+                    content=content,
+                    created_at=datetime.now(timezone.utc),
+                )
+                db.add(message)
+                await db.commit()
+                await db.refresh(message)
+                outgoing = _message_payload(message, sender.full_name)
+
+            await manager.broadcast(team_id, outgoing)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.disconnect(team_id, websocket)

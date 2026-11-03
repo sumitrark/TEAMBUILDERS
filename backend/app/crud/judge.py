@@ -9,7 +9,7 @@ from app.models.team import Team
 from app.models.hackathon import Hackathon
 from app.models.user import User
 from app.crud.notification import create_notification
-
+from app.models.judge_project_assignment import JudgeProjectAssignment
 
 # ============================================================
 # GET JUDGE PROJECTS
@@ -63,7 +63,7 @@ async def get_judge_projects(
         return "NOT_ACTIVE_JUDGE"
 
     # --------------------------------------------------------
-    # Get projects belonging to teams in this hackathon
+    # Only return projects explicitly assigned to this judge.
     # --------------------------------------------------------
 
     result = await db.execute(
@@ -72,8 +72,13 @@ async def get_judge_projects(
             Team,
             Project.team_id == Team.id,
         )
+        .join(
+            JudgeProjectAssignment,
+            JudgeProjectAssignment.project_id == Project.id,
+        )
         .where(
-            Team.hackathon_id == hackathon_id
+            Team.hackathon_id == hackathon_id,
+            JudgeProjectAssignment.judge_id == judge.id,
         )
         .order_by(
             Project.created_at.desc()
@@ -83,8 +88,6 @@ async def get_judge_projects(
     projects = result.scalars().all()
 
     return [_to_judge_project_response(p) for p in projects]
-
-
 # ============================================================
 # SINGLE PROJECT DETAIL (previously missing - the frontend detail
 # page called GET /judge/hackathons/{id}/projects/{project_id},
@@ -105,15 +108,25 @@ async def get_judge_project(
         )
     )
 
-    if judge_result.scalar_one_or_none() is None:
+    judge = judge_result.scalar_one_or_none()
+
+    if judge is None:
         return "NOT_ACTIVE_JUDGE"
 
     result = await db.execute(
         select(Project)
-        .join(Team, Project.team_id == Team.id)
+        .join(
+            Team,
+            Project.team_id == Team.id,
+        )
+        .join(
+            JudgeProjectAssignment,
+            JudgeProjectAssignment.project_id == Project.id,
+        )
         .where(
             Project.id == project_id,
             Team.hackathon_id == hackathon_id,
+            JudgeProjectAssignment.judge_id == judge.id,
         )
     )
 
@@ -123,7 +136,6 @@ async def get_judge_project(
         return "PROJECT_NOT_FOUND"
 
     return _to_judge_project_response(project)
-
 
 # ============================================================
 # MY ASSIGNED HACKATHONS (Judge Portal dashboard)
@@ -150,10 +162,21 @@ async def get_my_judge_hackathons(
 
     for judge, hackathon in rows:
         total_result = await db.execute(
-            select(Project)
-            .join(Team, Project.team_id == Team.id)
-            .where(Team.hackathon_id == hackathon.id)
-        )
+    select(Project)
+    .join(
+        Team,
+        Project.team_id == Team.id,
+    )
+    .join(
+        JudgeProjectAssignment,
+        JudgeProjectAssignment.project_id == Project.id,
+    )
+    .where(
+        Team.hackathon_id == hackathon.id,
+        JudgeProjectAssignment.judge_id == judge.id,
+    )
+)
+
         total_projects = len(total_result.scalars().all())
 
         evaluated_result = await db.execute(

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -86,10 +87,7 @@ export default function TeamDetailsPage() {
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center">
           <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-violet-600" />
-
-          <p className="text-gray-500">
-            Loading team...
-          </p>
+          <p className="text-gray-500">Loading team...</p>
         </div>
       </div>
     );
@@ -109,7 +107,6 @@ export default function TeamDetailsPage() {
           <h2 className="text-lg font-semibold text-red-700">
             Unable to load team
           </h2>
-
           <p className="mt-2 text-sm text-red-600">
             {error || "Team not found"}
           </p>
@@ -124,8 +121,15 @@ export default function TeamDetailsPage() {
     maxMembers - memberCount,
     0
   );
-
   const canInvite = availableSlots > 0;
+
+  const openInvitePage = () => {
+    router.push(`/dashboard/teams/${team.id}/invite`);
+  };
+
+  const openChatPage = () => {
+    router.push(`/dashboard/teams/${team.id}/chat`);
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
@@ -140,9 +144,7 @@ export default function TeamDetailsPage() {
 
       {/* Team Header */}
       <div className="rounded-3xl border bg-white p-8 shadow-sm">
-
         <div className="flex flex-col justify-between gap-6 md:flex-row md:items-start">
-
           <div>
             <div className="mb-3 inline-flex rounded-full bg-violet-600 px-3 py-1 text-xs font-medium text-white">
               Team
@@ -158,35 +160,22 @@ export default function TeamDetailsPage() {
             </p>
           </div>
 
-          {/* INVITE BUTTON */}
           <button
             type="button"
             disabled={!canInvite}
-            onClick={() =>
-              router.push(
-                `/dashboard/teams/${team.id}/invite`
-              )
-            }
+            onClick={openInvitePage}
             className="shrink-0 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-gray-300"
           >
-            {canInvite
-              ? "+ Invite Member"
-              : "Team Full"}
+            {canInvite ? "+ Invite Member" : "Team Full"}
           </button>
-
         </div>
 
-        {/* Team stats */}
+        {/* Team Stats */}
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-
           <div className="rounded-2xl bg-gray-50 p-5">
-            <p className="text-sm text-gray-500">
-              Members
-            </p>
-
+            <p className="text-sm text-gray-500">Members</p>
             <p className="mt-1 text-2xl font-bold">
               {memberCount}
-
               <span className="text-base font-normal text-gray-400">
                 {" "}/ {maxMembers}
               </span>
@@ -197,74 +186,53 @@ export default function TeamDetailsPage() {
             <p className="text-sm text-gray-500">
               Available Slots
             </p>
-
             <p className="mt-1 text-2xl font-bold">
               {availableSlots}
             </p>
           </div>
 
           <div className="rounded-2xl bg-gray-50 p-5">
-            <p className="text-sm text-gray-500">
-              Status
-            </p>
-
+            <p className="text-sm text-gray-500">Status</p>
             <p className="mt-1 text-2xl font-bold text-green-600">
               Active
             </p>
           </div>
-
         </div>
       </div>
 
-      {/* Members */}
+      {/* Team Members */}
       <div className="rounded-3xl border bg-white p-8 shadow-sm">
-
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-
           <div>
             <h2 className="text-xl font-bold">
               Team Members
             </h2>
-
             <p className="mt-1 text-sm text-gray-500">
               People currently participating in this team.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-
             <span className="rounded-full bg-gray-100 px-3 py-1 text-sm font-medium">
               {memberCount}/{maxMembers}
             </span>
 
-            {/* SECOND INVITE BUTTON */}
             {canInvite && (
               <button
                 type="button"
-                onClick={() =>
-                  router.push(
-                    `/dashboard/teams/${team.id}/invite`
-                  )
-                }
+                onClick={openInvitePage}
                 className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700"
               >
                 Invite
               </button>
             )}
-
           </div>
-
         </div>
 
         <div className="mt-6 space-y-3">
-
           {members.length === 0 ? (
-
             <div className="rounded-2xl border border-dashed p-8 text-center">
-
-              <div className="text-3xl">
-                👥
-              </div>
+              <div className="text-3xl">👥</div>
 
               <h3 className="mt-3 font-semibold">
                 No members yet
@@ -277,34 +245,22 @@ export default function TeamDetailsPage() {
               {canInvite && (
                 <button
                   type="button"
-                  onClick={() =>
-                    router.push(
-                      `/dashboard/teams/${team.id}/invite`
-                    )
-                  }
+                  onClick={openInvitePage}
                   className="mt-4 rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-violet-700"
                 >
                   + Invite Teammate
                 </button>
               )}
-
             </div>
-
           ) : (
-
             members.map((member, index) => (
-
               <div
                 key={member.id}
                 className="flex items-center justify-between rounded-2xl border p-4"
               >
-
                 <div className="flex items-center gap-4">
-
                   <div className="flex h-11 w-11 items-center justify-center rounded-full bg-violet-100 font-bold">
-                    {member.role === "owner"
-                      ? "👑"
-                      : "👤"}
+                    {member.role === "owner" ? "👑" : "👤"}
                   </div>
 
                   <div>
@@ -318,39 +274,89 @@ export default function TeamDetailsPage() {
                       User ID: {member.user_id}
                     </p>
                   </div>
-
                 </div>
 
                 <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium capitalize">
                   {member.role}
                 </span>
-
               </div>
-
             ))
-
           )}
-
         </div>
       </div>
 
-      {/* Team Actions */}
+      {/* TEAM WORKSPACE */}
+      <section className="overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-sm">
+        <div className="border-b border-violet-100 bg-violet-50/50 p-6">
+          <h2 className="text-2xl font-bold text-gray-900">
+            Team Workspace
+          </h2>
+          <p className="mt-1 text-sm text-gray-600">
+            Your team's collaboration and communication space.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 p-6 sm:grid-cols-2">
+
+          {/* TEAM CHAT */}
+          <button
+            type="button"
+            onClick={openChatPage}
+            className="group flex items-center gap-5 rounded-2xl border-2 border-violet-200 bg-violet-50 p-6 text-left transition hover:border-violet-500 hover:bg-violet-100"
+          >
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-3xl text-white shadow-sm">
+              💬
+            </div>
+
+            <div className="min-w-0">
+              <h3 className="text-lg font-bold text-gray-900">
+                Team Chat
+              </h3>
+
+              <p className="mt-1 text-sm text-gray-600">
+                Communicate and share updates with your teammates.
+              </p>
+
+              <span className="mt-3 inline-block font-semibold text-violet-700 group-hover:underline">
+                Open Team Chat →
+              </span>
+            </div>
+          </button>
+
+          {/* TEAM MEMBERS */}
+          <div className="flex items-center gap-5 rounded-2xl border p-6">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-3xl">
+              👥
+            </div>
+
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">
+                Team Members
+              </h3>
+
+              <p className="mt-1 text-sm text-gray-600">
+                {memberCount} members collaborating in this team.
+              </p>
+
+              <span className="mt-3 inline-block text-sm font-semibold text-blue-700">
+                {memberCount} Active Members
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* OTHER TEAM ACTIONS */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 
         {/* Invite */}
         <button
           type="button"
           disabled={!canInvite}
-          onClick={() =>
-            router.push(
-              `/dashboard/teams/${team.id}/invite`
-            )
-          }
+          onClick={openInvitePage}
           className="rounded-2xl border bg-white p-6 text-left transition hover:-translate-y-1 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <div className="text-2xl">
-            🤝
-          </div>
+          <div className="text-2xl">🤝</div>
 
           <h3 className="mt-3 font-semibold">
             Invite Teammates
@@ -369,23 +375,18 @@ export default function TeamDetailsPage() {
         <button
           type="button"
           onClick={() =>
-            alert(
-              "AI Matchmaker will be available soon."
-            )
+            alert("AI Matchmaker will be available soon.")
           }
           className="rounded-2xl border bg-white p-6 text-left transition hover:-translate-y-1 hover:shadow-md"
         >
-          <div className="text-2xl">
-            🧠
-          </div>
+          <div className="text-2xl">🧠</div>
 
           <h3 className="mt-3 font-semibold">
             AI Matchmaker
           </h3>
 
           <p className="mt-1 text-sm text-gray-500">
-            Get AI-powered teammate recommendations
-            based on skills and roles.
+            Get AI-powered teammate recommendations based on skills and roles.
           </p>
         </button>
 
@@ -393,28 +394,21 @@ export default function TeamDetailsPage() {
         <button
           type="button"
           onClick={() =>
-            alert(
-              "Schedule checking will be available soon."
-            )
+            alert("Schedule checking will be available soon.")
           }
           className="rounded-2xl border bg-white p-6 text-left transition hover:-translate-y-1 hover:shadow-md"
         >
-          <div className="text-2xl">
-            📅
-          </div>
+          <div className="text-2xl">📅</div>
 
           <h3 className="mt-3 font-semibold">
             Schedule Check
           </h3>
 
           <p className="mt-1 text-sm text-gray-500">
-            Automatically prevent conflicting
-            hackathon participation.
+            Automatically prevent conflicting hackathon participation.
           </p>
         </button>
-
       </div>
-
     </div>
   );
 }

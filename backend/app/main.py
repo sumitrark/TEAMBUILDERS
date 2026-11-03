@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from app.api.routes.team_chat import router as team_chat_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.participant import router as participant_router
 from app.core.config import settings
@@ -173,3 +174,6 @@ app.include_router(
     prefix="/api/v1",
 )
 
+
+
+app.include_router(team_chat_router, prefix="/api/v1")

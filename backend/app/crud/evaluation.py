@@ -9,7 +9,7 @@ from app.models.project import Project
 from app.models.team import Team
 from app.models.judge import Judge
 from app.schemas.evaluation import EvaluationCreate
-
+from app.models.judge_project_assignment import JudgeProjectAssignment
 
 async def _get_active_criteria(
     db: AsyncSession,
@@ -102,13 +102,25 @@ async def create_evaluation(
     judge = judge_result.scalar_one_or_none()
 
     if judge is None:
-        return "NOT_A_JUDGE"
+      return "NOT_A_JUDGE"
 
-    # --------------------------------------------------------
-    # Judges cannot evaluate their own team.
-    # --------------------------------------------------------
+# --------------------------------------------------------
+# Judge can only evaluate projects explicitly assigned to them.
+# --------------------------------------------------------
 
-    from app.models.team_member import TeamMember
+    assignment_result = await db.execute(
+    select(JudgeProjectAssignment).where(
+        JudgeProjectAssignment.judge_id == judge.id,
+        JudgeProjectAssignment.project_id == data.project_id,
+    )
+)
+
+    if assignment_result.scalar_one_or_none() is None:
+      return "PROJECT_NOT_ASSIGNED"
+
+# --------------------------------------------------------
+# Judges cannot evaluate their own team.
+# --------------------------------------------------------
 
     member_result = await db.execute(
         select(TeamMember).where(
@@ -236,114 +248,140 @@ async def get_project_score(
     db: AsyncSession,
     project_id: UUID,
 ):
-    result = await db.execute(
-        select(
-            func.count(Evaluation.id),
-            func.avg(Evaluation.innovation_score),
-            func.avg(Evaluation.technical_score),
-            func.avg(Evaluation.impact_score),
-            func.avg(Evaluation.presentation_score),
-            func.avg(Evaluation.overall_score),
-        )
+    # --------------------------------------------------------
+    # Load evaluations for this project.
+    # --------------------------------------------------------
+
+    evaluations_result = await db.execute(
+        select(Evaluation)
         .where(
-            Evaluation.project_id == project_id
+            Evaluation.project_id == project_id,
         )
+        .order_by(Evaluation.created_at.asc())
     )
 
-    row = result.one()
+    evaluations = evaluations_result.scalars().all()
 
-    count = row[0]
-
-    if count == 0:
+    if not evaluations:
         return {
             "evaluation_count": 0,
             "average_score": 0,
             "total_score": 0,
             "weighted_score": None,
+            "official_score": 0,
         }
 
-    average_score = (
-        float(row[1] or 0)
-        + float(row[2] or 0)
-        + float(row[3] or 0)
-        + float(row[4] or 0)
-        + float(row[5] or 0)
-    )
-
-    average_score = round(
-        average_score,
-        2,
-    )
-
     # --------------------------------------------------------
-    # If configurable criteria exist, calculate the average
-    # normalized weighted score across submitted evaluations.
+    # Find the project's hackathon and active criteria.
     # --------------------------------------------------------
 
     project_result = await db.execute(
         select(Project).where(
-            Project.id == project_id
+            Project.id == project_id,
         )
     )
 
     project = project_result.scalar_one_or_none()
 
-    weighted_score = None
+    if project is None:
+        return {
+            "evaluation_count": len(evaluations),
+            "average_score": 0,
+            "total_score": 0,
+            "weighted_score": None,
+            "official_score": 0,
+        }
 
-    if project is not None and project.hackathon_id is not None:
+    criteria = []
+
+    if project.hackathon_id is not None:
         criteria = await _get_active_criteria(
             db,
             project.hackathon_id,
         )
 
-        if criteria and all(
-            evaluation.criterion_scores
-            for evaluation in (
-                await db.execute(
-                    select(Evaluation).where(
-                        Evaluation.project_id == project_id
-                    )
+    # --------------------------------------------------------
+    # Configurable criteria are the official scoring system
+    # when they exist.
+    # --------------------------------------------------------
+
+    if criteria:
+        calculated_scores = []
+
+        for evaluation in evaluations:
+            if not evaluation.criterion_scores:
+                continue
+
+            try:
+                score = _calculate_weighted_score(
+                    criteria,
+                    evaluation.criterion_scores,
                 )
-            ).scalars().all()
-        ):
-            scores_result = await db.execute(
-                select(Evaluation).where(
-                    Evaluation.project_id == project_id
-                )
+            except (KeyError, TypeError, ZeroDivisionError):
+                score = None
+
+            if score is not None:
+                calculated_scores.append(score)
+
+        if calculated_scores:
+            official_score = round(
+                sum(calculated_scores) / len(calculated_scores),
+                2,
+            )
+        else:
+            official_score = 0
+
+        weighted_score = official_score
+
+    else:
+        # ----------------------------------------------------
+        # Legacy scoring:
+        # five 1–10 scores -> normalized to 0–100.
+        # ----------------------------------------------------
+
+        legacy_scores = []
+
+        for evaluation in evaluations:
+            score_sum = (
+                evaluation.innovation_score
+                + evaluation.technical_score
+                + evaluation.impact_score
+                + evaluation.presentation_score
+                + evaluation.overall_score
             )
 
-            evaluations = scores_result.scalars().all()
+            normalized_score = (score_sum / 50) * 100
+            legacy_scores.append(normalized_score)
 
-            calculated_scores = []
+        official_score = round(
+            sum(legacy_scores) / len(legacy_scores),
+            2,
+        )
 
-            for evaluation in evaluations:
-                if not evaluation.criterion_scores:
-                    continue
+        weighted_score = None
 
-                try:
-                    score = _calculate_weighted_score(
-                        criteria,
-                        evaluation.criterion_scores,
-                    )
-                except (KeyError, TypeError, ZeroDivisionError):
-                    score = None
+    # --------------------------------------------------------
+    # Keep the legacy response fields for compatibility while
+    # exposing the normalized official score for new features.
+    # --------------------------------------------------------
 
-                if score is not None:
-                    calculated_scores.append(score)
-
-            if calculated_scores:
-                weighted_score = round(
-                    sum(calculated_scores) / len(calculated_scores),
-                    2,
-                )
+    average_score = round(
+        sum(
+            evaluation.innovation_score
+            + evaluation.technical_score
+            + evaluation.impact_score
+            + evaluation.presentation_score
+            + evaluation.overall_score
+            for evaluation in evaluations
+        ) / len(evaluations),
+        2,
+    )
 
     return {
-        "evaluation_count": count,
+        "evaluation_count": len(evaluations),
         "average_score": average_score,
-        "total_score": round(
-            average_score * 10,
-            2,
-        ),
+        "total_score": round(official_score, 2),
         "weighted_score": weighted_score,
+        "official_score": round(official_score, 2),
     }
 

@@ -10,6 +10,7 @@ import {
   FolderGit2,
   GitBranch,
   Loader2,
+  MessageCircle,
   Users,
 } from "lucide-react";
 
@@ -272,6 +273,7 @@ export default function WorkspacePage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* MAIN */}
         <div className="space-y-6 lg:col-span-2">
+
           {/* TEAM */}
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-5 flex items-center gap-2">
@@ -324,6 +326,35 @@ export default function WorkspacePage() {
                     </div>
                   </div>
                 ))}
+
+                {/* TEAM CHAT */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      `/dashboard/teams/${data.team.id}/chat`
+                    )
+                  }
+                  className="mt-4 flex w-full items-center justify-between rounded-xl border border-violet-200 bg-violet-50 p-4 text-left transition hover:border-violet-400 hover:bg-violet-100"
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-600 text-white">
+                      <MessageCircle className="h-5 w-5" />
+                    </span>
+
+                    <span>
+                      <span className="block font-semibold text-slate-900">
+                        Team Chat
+                      </span>
+
+                      <span className="mt-1 block text-xs text-slate-500">
+                        Message your teammates and share updates.
+                      </span>
+                    </span>
+                  </span>
+
+                  <ArrowRight className="h-5 w-5 shrink-0 text-violet-600" />
+                </button>
               </div>
             ) : (
               <div>
@@ -572,4 +603,4 @@ export default function WorkspacePage() {
       </div>
     </div>
   );
-}
+}           

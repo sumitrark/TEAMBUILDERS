@@ -27,3 +27,5 @@ from app.models.identity_verification import IdentityVerification
 from app.models.face_reference_photo import FaceReferencePhoto
 from app.models.face_reference_photo import FaceReferencePhoto
 from app.models.proctoring_session import ProctoringSession
+from app.models.judge_project_assignment import JudgeProjectAssignment
+from app.models.team_message import TeamMessage

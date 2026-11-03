@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Text, func
@@ -22,7 +22,7 @@ class FaceReferencePhoto(Base):
     ForeignKey("users.id", ondelete="CASCADE"),
     unique=True,
     nullable=False,
-)
+    )
 
     photo_data_url: Mapped[str] = mapped_column(
         Text,
@@ -41,5 +41,4 @@ class FaceReferencePhoto(Base):
         onupdate=func.now(),
         nullable=False,
     )
-
 

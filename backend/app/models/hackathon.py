@@ -116,6 +116,10 @@ class Hackathon(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    results_announcement_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     # =====================================================
     # MEDIA

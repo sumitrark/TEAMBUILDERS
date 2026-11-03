@@ -16,6 +16,8 @@ from app.crud.participant import (
     get_my_hackathons,
 )
 
+from app.crud.results import get_published_results
+
 from app.schemas.participant import ParticipantResponse
 
 
@@ -112,3 +114,32 @@ async def my_hackathons(
         db=db,
         user_id=current_user.id,
     )
+
+@router.get(
+    "/hackathons/{hackathon_id}/results",
+)
+async def results(
+    hackathon_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # The results CRUD performs the publication check before
+    # returning any score or leaderboard data.
+    result = await get_published_results(
+        db=db,
+        hackathon_id=hackathon_id,
+    )
+
+    if result == "HACKATHON_NOT_FOUND":
+        raise HTTPException(
+            status_code=404,
+            detail="Hackathon not found",
+        )
+
+    if result == "RESULTS_NOT_PUBLISHED":
+        raise HTTPException(
+            status_code=403,
+            detail="Results have not been announced yet.",
+        )
+
+    return result
