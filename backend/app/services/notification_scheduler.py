@@ -1,3 +1,6 @@
+
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,10 +13,7 @@ from app.services.hackathon_lifecycle import (
     get_time_remaining_seconds,
 )
 
-# (threshold_seconds, marker, message) - marker is embedded in the
-# notification's action_url as a dedup key, so calling this endpoint
-# repeatedly (as a cron naturally would) never sends the same
-# reminder twice.
+
 TIME_REMAINING_THRESHOLDS = [
     (6 * 3600, "6h", "You have 6 hours remaining."),
     (3 * 3600, "3h", "You have 3 hours remaining."),
@@ -25,7 +25,9 @@ TIME_REMAINING_THRESHOLDS = [
 
 
 async def _notification_already_sent(
-    db: AsyncSession, user_id, action_url: str
+    db: AsyncSession,
+    user_id,
+    action_url: str,
 ) -> bool:
     result = await db.execute(
         select(Notification).where(
@@ -38,11 +40,8 @@ async def _notification_already_sent(
 
 async def dispatch_hackathon_reminders(db: AsyncSession) -> dict:
     """
-    Meant to be called periodically by an external scheduler (cron,
-    a platform's scheduled-job feature, etc.) - not a standing loop
-    inside this process. Safe to call as often as needed and safe
-    to run from multiple instances: every send is guarded by an
-    idempotency check against action_url before inserting.
+    Dispatch hackathon lifecycle reminders.
+    Safe to call periodically because notifications are deduplicated.
     """
     sent_counts = {
         "hackathon_started": 0,
@@ -66,7 +65,9 @@ async def dispatch_hackathon_reminders(db: AsyncSession) -> dict:
         )
         participants = participants_result.scalars().all()
 
-        workspace_url = f"/dashboard/hackathons/{hackathon.id}/workspace"
+        workspace_url = (
+            f"/dashboard/hackathons/{hackathon.id}/workspace"
+        )
 
         if lifecycle_status == "LIVE":
             started_url = f"{workspace_url}?reminder=started"
@@ -82,9 +83,7 @@ async def dispatch_hackathon_reminders(db: AsyncSession) -> dict:
                     user_id=participant.user_id,
                     notification_type="HACKATHON_STARTED",
                     title="Hackathon Started",
-                    message=(
-                        f"'{hackathon.title}' has started. Good luck!"
-                    ),
+                    message=f"'{hackathon.title}' has started. Good luck!",
                     action_url=started_url,
                 )
                 sent_counts["hackathon_started"] += 1
@@ -136,6 +135,58 @@ async def dispatch_hackathon_reminders(db: AsyncSession) -> dict:
                 sent_counts["submission_closed"] += 1
 
     await db.commit()
-
     return sent_counts
 
+
+async def dispatch_scheduled_results(db: AsyncSession) -> dict:
+    """
+    Notify registered participants when scheduled results are published.
+    Repeated scheduler calls do not send duplicate notifications.
+    """
+    sent = 0
+    now = datetime.now(timezone.utc)
+
+    result = await db.execute(
+        select(Hackathon).where(
+            Hackathon.results_announcement_at.is_not(None),
+            Hackathon.results_announcement_at <= now,
+        )
+    )
+    hackathons = result.scalars().all()
+
+    for hackathon in hackathons:
+        participants_result = await db.execute(
+            select(Participant).where(
+                Participant.hackathon_id == hackathon.id
+            )
+        )
+        participants = participants_result.scalars().all()
+
+        action_url = (
+            f"/dashboard/hackathons/{hackathon.id}/results"
+            f"?published={hackathon.results_announcement_at.isoformat()}"
+        )
+
+        for participant in participants:
+            if await _notification_already_sent(
+                db,
+                participant.user_id,
+                action_url,
+            ):
+                continue
+
+            await create_notification(
+                db=db,
+                user_id=participant.user_id,
+                notification_type="RESULT_PUBLISHED",
+                title="Hackathon Results Published",
+                message=(
+                    f"Results for '{hackathon.title}' are now available."
+                ),
+                action_url=action_url,
+            )
+            sent += 1
+
+    await db.commit()
+
+    return {"results_notifications": sent}

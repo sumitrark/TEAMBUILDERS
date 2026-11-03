@@ -388,6 +388,7 @@ async def judges(
     return result
 
 
+
 @router.post(
     "/hackathons/{hackathon_id}/judges/invite",
     response_model=JudgeInvitationResponse,
@@ -398,6 +399,12 @@ async def invite_hackathon_judge(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_organizer),
 ):
+    import httpx
+
+    from sqlalchemy import select
+    from app.models.hackathon import Hackathon
+    from app.services.email_service import send_judge_invitation_email
+
     result = await invite_judge(
         db=db,
         organizer_id=current_user.id,
@@ -432,15 +439,29 @@ async def invite_hackathon_judge(
             ),
         )
 
+    hackathon_result = await db.execute(
+        select(Hackathon).where(Hackathon.id == hackathon_id)
+    )
+    hackathon = hackathon_result.scalar_one()
+
+    invitation_url = (
+        f"{settings.FRONTEND_URL}/judge/invite/{result.token}"
+    )
+
     dev_invitation_link = None
 
-    if not settings.EMAIL_PROVIDER:
-        # No real email infrastructure configured - never pretend an
-        # email was sent. Hand the organizer the link directly so
-        # development/testing isn't blocked.
-        dev_invitation_link = (
-            f"{settings.FRONTEND_URL}/judge/invite/{result.token}"
+    try:
+        email_sent = await send_judge_invitation_email(
+            email=result.invited_email,
+            hackathon_title=hackathon.title,
+            invitation_url=invitation_url,
+            expires_at=result.expires_at,
         )
+    except httpx.HTTPError:
+        email_sent = False
+
+    if not email_sent:
+        dev_invitation_link = invitation_url
 
     return {
         "id": result.id,
@@ -454,6 +475,8 @@ async def invite_hackathon_judge(
         "created_at": result.created_at,
         "dev_invitation_link": dev_invitation_link,
     }
+
+
 
 
 @router.get(
@@ -509,12 +532,23 @@ async def list_hackathon_judge_invitations(
     "/hackathons/{hackathon_id}/judges/invitations/{invitation_id}/resend",
     response_model=JudgeInvitationResponse,
 )
+
+@router.post(
+    "/hackathons/{hackathon_id}/judges/invitations/{invitation_id}/resend",
+    response_model=JudgeInvitationResponse,
+)
 async def resend_hackathon_judge_invitation(
     hackathon_id: UUID,
     invitation_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_organizer),
 ):
+    import httpx
+
+    from sqlalchemy import select
+    from app.models.hackathon import Hackathon
+    from app.services.email_service import send_judge_invitation_email
+
     result = await resend_organizer_judge_invitation(
         db=db,
         organizer_id=current_user.id,
@@ -533,12 +567,42 @@ async def resend_hackathon_judge_invitation(
             detail="Only pending or expired invitations can be resent",
         )
 
+    # Ensure the invitation belongs to the hackathon in the URL.
+    if result.hackathon_id != hackathon_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invitation not found",
+        )
+
+    hackathon_result = await db.execute(
+        select(Hackathon).where(Hackathon.id == hackathon_id)
+    )
+    hackathon = hackathon_result.scalar_one_or_none()
+
+    if hackathon is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found",
+        )
+
+    invitation_url = (
+        f"{settings.FRONTEND_URL}/judge/invite/{result.token}"
+    )
+
     dev_invitation_link = None
 
-    if not settings.EMAIL_PROVIDER:
-        dev_invitation_link = (
-            f"{settings.FRONTEND_URL}/judge/invite/{result.token}"
+    try:
+        email_sent = await send_judge_invitation_email(
+            email=result.invited_email,
+            hackathon_title=hackathon.title,
+            invitation_url=invitation_url,
+            expires_at=result.expires_at,
         )
+    except httpx.HTTPError:
+        email_sent = False
+
+    if not email_sent:
+        dev_invitation_link = invitation_url
 
     return {
         "id": result.id,
@@ -552,6 +616,7 @@ async def resend_hackathon_judge_invitation(
         "created_at": result.created_at,
         "dev_invitation_link": dev_invitation_link,
     }
+
 
 
 @router.delete(

@@ -145,6 +145,7 @@ async def get_my_judge_hackathons(
     db: AsyncSession,
     user_id: UUID,
 ):
+    from sqlalchemy import func
     from app.models.evaluation import Evaluation
 
     judge_result = await db.execute(
@@ -157,52 +158,49 @@ async def get_my_judge_hackathons(
         .order_by(Hackathon.created_at.desc())
     )
 
-    rows = judge_result.all()
     output = []
 
-    for judge, hackathon in rows:
+    for judge, hackathon in judge_result.all():
         total_result = await db.execute(
-    select(Project)
-    .join(
-        Team,
-        Project.team_id == Team.id,
-    )
-    .join(
-        JudgeProjectAssignment,
-        JudgeProjectAssignment.project_id == Project.id,
-    )
-    .where(
-        Team.hackathon_id == hackathon.id,
-        JudgeProjectAssignment.judge_id == judge.id,
-    )
-)
+            select(func.count(func.distinct(
+                JudgeProjectAssignment.project_id
+            )))
+            .where(
+                JudgeProjectAssignment.judge_id == judge.id,
+            )
+        )
 
-        total_projects = len(total_result.scalars().all())
+        total_projects = total_result.scalar_one() or 0
 
         evaluated_result = await db.execute(
-            select(Evaluation)
-            .join(Project, Evaluation.project_id == Project.id)
-            .join(Team, Project.team_id == Team.id)
+            select(func.count(func.distinct(Evaluation.project_id)))
+            .join(
+                JudgeProjectAssignment,
+                JudgeProjectAssignment.project_id == Evaluation.project_id,
+            )
             .where(
-                Team.hackathon_id == hackathon.id,
+                JudgeProjectAssignment.judge_id == judge.id,
                 Evaluation.judge_id == user_id,
             )
         )
-        evaluated_count = len(evaluated_result.scalars().all())
 
-        output.append(
-            {
-                "hackathon_id": hackathon.id,
-                "title": hackathon.title,
-                "description": hackathon.description,
-                "status": hackathon.status,
-                "total_projects": total_projects,
-                "evaluated_count": evaluated_count,
-                "pending_count": total_projects - evaluated_count,
-            }
-        )
+        evaluated_count = evaluated_result.scalar_one() or 0
+
+        output.append({
+            "hackathon_id": hackathon.id,
+            "title": hackathon.title,
+            "description": hackathon.description,
+            "status": hackathon.status,
+            "total_projects": total_projects,
+            "evaluated_count": evaluated_count,
+            "pending_count": max(
+                total_projects - evaluated_count,
+                0,
+            ),
+        })
 
     return output
+
 
 
 # ============================================================

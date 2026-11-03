@@ -1,3 +1,4 @@
+
 import { api } from "@/lib/api";
 
 export async function getMyHackathons() {
@@ -10,10 +11,6 @@ export async function joinHackathon(id: string) {
   return res.data;
 }
 
-// ============================================================
-// PUBLISHED RESULTS
-// ============================================================
-
 export interface LeaderboardEntry {
   rank: number;
   project_id: string;
@@ -25,7 +22,7 @@ export interface LeaderboardEntry {
 
 export interface PublishedResults {
   hackathon_id: string;
-  title: string;
+  hackathon_title: string;
   announced_at: string;
   leaderboard: LeaderboardEntry[];
   top_three: LeaderboardEntry[];

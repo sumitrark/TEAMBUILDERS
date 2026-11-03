@@ -1,11 +1,7 @@
+
 from uuid import UUID
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-)
-
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -52,9 +48,7 @@ async def unread_count(
         user_id=current_user.id,
     )
 
-    return {
-        "count": count,
-    }
+    return {"count": count}
 
 
 @router.post(
@@ -91,20 +85,8 @@ async def read_all_notifications(
         user_id=current_user.id,
     )
 
-    return {
-        "message": "All notifications marked as read"
-    }
+    return {"message": "All notifications marked as read"}
 
-
-# =========================================================
-# DISPATCH HACKATHON REMINDERS
-#
-# Meant to be invoked periodically by an external scheduler (cron,
-# a deployment platform's scheduled-job feature, etc.) rather than
-# a standing background loop inside this process - see
-# services/notification_scheduler.py for the idempotency design
-# that makes repeated calls safe.
-# =========================================================
 
 @router.post("/dispatch-reminders")
 async def dispatch_reminders(
@@ -113,11 +95,14 @@ async def dispatch_reminders(
 ):
     from app.services.notification_scheduler import (
         dispatch_hackathon_reminders,
+        dispatch_scheduled_results,
     )
 
-    sent_counts = await dispatch_hackathon_reminders(db)
+    reminder_counts = await dispatch_hackathon_reminders(db)
+    result_counts = await dispatch_scheduled_results(db)
 
     return {
-        "message": "Reminders dispatched",
-        "sent": sent_counts,
+        "message": "Notifications dispatched",
+        "reminders": reminder_counts,
+        "results": result_counts,
     }
