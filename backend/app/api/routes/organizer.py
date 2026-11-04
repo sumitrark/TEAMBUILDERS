@@ -147,6 +147,15 @@ async def delete_hackathon(
             detail="Hackathon not found or you do not own it",
         )
 
+    if deleted == "HAS_PARTICIPANTS":
+        raise HTTPException(
+        status_code=409,
+        detail=(
+            "Cannot delete this hackathon because participants "
+            "are registered. Remove or manage registrations first."
+        ),
+    )
+
     return {
         "message": "Hackathon deleted successfully"
     }

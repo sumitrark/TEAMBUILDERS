@@ -1,3 +1,4 @@
+
 from datetime import date, datetime
 from uuid import UUID
 
@@ -7,18 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class HackathonCreate(BaseModel):
     title: str = Field(min_length=3, max_length=200)
     description: str = Field(min_length=10)
-
-    # Kept for compatibility with existing participant UI.
-    # Organizer API will automatically populate this.
     organizer: str = ""
 
     mode: str
     location: str
 
-    team_size: int = Field(
-        ge=2,
-        le=20,
-    )
+    team_size: int = Field(ge=2, le=20)
 
     difficulty: str
     prize_pool: str
@@ -27,9 +22,6 @@ class HackathonCreate(BaseModel):
     start_date: date
     end_date: date
 
-    # Precise, timezone-aware lifecycle timestamps (optional - when
-    # omitted, lifecycle status falls back to the date fields above
-    # at day boundaries). New organizer UIs should always send these.
     registration_start: datetime | None = None
     registration_end: datetime | None = None
     hackathon_start: datetime | None = None
@@ -40,13 +32,18 @@ class HackathonCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_lifecycle_ordering(self):
+        if self.start_date > self.end_date:
+            raise ValueError(
+                "Start date must be before or equal to end date"
+            )
+
         if (
             self.registration_start
             and self.registration_end
             and self.registration_start >= self.registration_end
         ):
             raise ValueError(
-                "registration_start must be before registration_end"
+                "Registration start must be before registration end"
             )
 
         if (
@@ -55,7 +52,7 @@ class HackathonCreate(BaseModel):
             and self.registration_end > self.hackathon_start
         ):
             raise ValueError(
-                "registration_end must be at or before hackathon_start"
+                "Registration must end before or when the hackathon starts"
             )
 
         if (
@@ -64,7 +61,23 @@ class HackathonCreate(BaseModel):
             and self.hackathon_start >= self.hackathon_end
         ):
             raise ValueError(
-                "hackathon_start must be before hackathon_end"
+                "Hackathon start must be before hackathon end"
+            )
+
+        if (
+            self.hackathon_start
+            and self.hackathon_start.date() != self.start_date
+        ):
+            raise ValueError(
+                "Hackathon start date must match start_date"
+            )
+
+        if (
+            self.hackathon_end
+            and self.hackathon_end.date() != self.end_date
+        ):
+            raise ValueError(
+                "Hackathon end date must match end_date"
             )
 
         return self
@@ -93,6 +106,11 @@ class HackathonUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
 
+    registration_start: datetime | None = None
+    registration_end: datetime | None = None
+    hackathon_start: datetime | None = None
+    hackathon_end: datetime | None = None
+
     banner_image: str | None = None
     website: str | None = None
 
@@ -112,9 +130,11 @@ class HackathonResponse(BaseModel):
     difficulty: str
     prize_pool: str
 
-    registration_deadline: date
-    start_date: date
-    end_date: date
+    # Legacy fields: optional because they are not present
+    # in the current Hackathon database model.
+    registration_deadline: date | None = None
+    start_date: date | None = None
+    end_date: date | None = None
 
     registration_start: datetime | None = None
     registration_end: datetime | None = None
@@ -127,10 +147,6 @@ class HackathonResponse(BaseModel):
     status: str
     is_active: bool
 
-    # Authoritative, server-computed lifecycle status - populated by
-    # the route, not stored on the model. Optional so this schema
-    # still works for any endpoint that hasn't been updated to
-    # compute it yet.
     lifecycle_status: str | None = None
 
     model_config = ConfigDict(

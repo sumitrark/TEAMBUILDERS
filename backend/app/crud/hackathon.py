@@ -13,20 +13,27 @@ from app.schemas.hackathon import (
 async def create_hackathon(
     db: AsyncSession,
     data: HackathonCreate,
-    organizer_id,
+    organizer_id: UUID,
 ):
+    hackathon_data = data.model_dump(
+        exclude={
+            "registration_deadline",
+            "start_date",
+            "end_date",
+        },
+        exclude_unset=True,
+    )
+
     hackathon = Hackathon(
-        **data.model_dump(),
+        **hackathon_data,
         organizer_id=organizer_id,
     )
 
     db.add(hackathon)
-
     await db.commit()
     await db.refresh(hackathon)
 
     return hackathon
-
 
 async def get_all_hackathons(
     db: AsyncSession,

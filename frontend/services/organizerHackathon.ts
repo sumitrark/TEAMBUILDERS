@@ -18,6 +18,8 @@ export interface OrganizerHackathon {
   status: string;
   is_active?: boolean;
   judge_invitation_code?: string;
+  hackathon_start?: string | null;
+  hackathon_end?: string | null;
 }
 
 export type Hackathon = OrganizerHackathon;
@@ -287,7 +289,6 @@ export async function getHackathonAnalytics(
 // ============================================================
 // CREATE
 // ============================================================
-
 export async function createOrganizerHackathon(data: {
   title: string;
   description: string;
@@ -299,6 +300,8 @@ export async function createOrganizerHackathon(data: {
   registration_deadline: string;
   start_date: string;
   end_date: string;
+  hackathon_start: string;
+  hackathon_end: string;
   banner_image?: string;
   website?: string;
 }) {

@@ -69,21 +69,33 @@ class Hackathon(Base):
         String(100)
     )
 
+    
     # =====================================================
     # DATES
     # =====================================================
 
-    registration_deadline: Mapped[date] = mapped_column(
-        Date
+    registration_start: Mapped[datetime | None] = mapped_column(
+    DateTime(timezone=True),
+    nullable=True,
     )
 
-    start_date: Mapped[date] = mapped_column(
-        Date
+    registration_end: Mapped[datetime | None] = mapped_column(
+    DateTime(timezone=True),
+    nullable=True,
     )
 
-    end_date: Mapped[date] = mapped_column(
-        Date
-    )
+    hackathon_start: Mapped[datetime | None] = mapped_column(
+    DateTime(timezone=True),
+    nullable=True,
+   )
+
+    hackathon_end: Mapped[datetime | None] = mapped_column(
+    DateTime(timezone=True),
+    nullable=True,
+   )
+
+    
+
 
     # =====================================================
     # PRECISE LIFECYCLE TIMESTAMPS

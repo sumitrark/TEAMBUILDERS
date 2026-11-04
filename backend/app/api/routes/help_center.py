@@ -26,7 +26,7 @@ from app.schemas.help_center import (
 )
 
 from app.services.help_center_service import (
-    generate_help_response,
+    generate_help_response_with_ai,
     save_conversation,
     get_user_help_context,
 )
@@ -78,7 +78,7 @@ async def chat(
     # Generate answer
     # -----------------------------------------------------
 
-    category, answer = generate_help_response(
+    category, answer = await generate_help_response_with_ai(
         question=question,
         context=context,
     )

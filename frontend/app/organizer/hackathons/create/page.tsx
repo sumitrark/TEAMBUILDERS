@@ -1,12 +1,11 @@
+
 "use client";
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
-import {
-  createOrganizerHackathon,
-} from "@/services/organizerHackathon";
+import { createOrganizerHackathon } from "@/services/organizerHackathon";
 
 export default function CreateHackathonPage() {
   const router = useRouter();
@@ -23,43 +22,62 @@ export default function CreateHackathonPage() {
     prize_pool: "",
     registration_deadline: "",
     start_date: "",
+    start_time: "",
     end_date: "",
+    end_time: "",
     banner_image: "",
     website: "",
   });
 
-  function updateField(
-    field: string,
-    value: string | number
-  ) {
+  function updateField(field: string, value: string | number) {
     setForm((current) => ({
       ...current,
       [field]: value,
     }));
   }
 
-  async function handleSubmit(
-    e: FormEvent<HTMLFormElement>
-  ) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (
+      !form.start_date ||
+      !form.start_time ||
+      !form.end_date ||
+      !form.end_time
+    ) {
+      alert("Please enter the hackathon start and end dates and times.");
+      return;
+    }
+
+    // Interpret the entered times as Indian Standard Time (UTC +05:30).
+    const hackathonStart = `${form.start_date}T${form.start_time}:00+05:30`;
+    const hackathonEnd = `${form.end_date}T${form.end_time}:00+05:30`;
+
+    if (new Date(hackathonStart) >= new Date(hackathonEnd)) {
+      alert("Hackathon end date and time must be after the start date and time.");
+      return;
+    }
 
     try {
       setLoading(true);
 
+      const {
+        start_time,
+        end_time,
+        ...hackathonData
+      } = form;
+
       await createOrganizerHackathon({
-        ...form,
+        ...hackathonData,
         team_size: Number(form.team_size),
+        hackathon_start: hackathonStart,
+        hackathon_end: hackathonEnd,
       });
 
       alert("Hackathon created successfully!");
-
       router.push("/organizer/hackathons");
-
     } catch (error: any) {
-      console.error(
-        "Failed to create hackathon:",
-        error
-      );
+      console.error("Failed to create hackathon:", error);
 
       alert(
         error?.response?.data?.detail ??
@@ -72,12 +90,10 @@ export default function CreateHackathonPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-
       <div className="border-b bg-white px-8 py-5">
         <button
-          onClick={() =>
-            router.push("/organizer/hackathons")
-          }
+          type="button"
+          onClick={() => router.push("/organizer/hackathons")}
           className="mb-3 flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -94,25 +110,20 @@ export default function CreateHackathonPage() {
       </div>
 
       <div className="p-8">
-
         <form
           onSubmit={handleSubmit}
           className="mx-auto max-w-4xl space-y-6"
         >
-
+          {/* Basic Information */}
           <section className="rounded-2xl border bg-white p-6 shadow-sm">
-
             <h2 className="mb-5 text-lg font-semibold">
               Basic Information
             </h2>
 
             <div className="grid gap-5">
-
               <input
                 value={form.title}
-                onChange={(e) =>
-                  updateField("title", e.target.value)
-                }
+                onChange={(e) => updateField("title", e.target.value)}
                 placeholder="Hackathon title"
                 required
                 className="rounded-xl border p-3 outline-none focus:ring-2 focus:ring-violet-500"
@@ -121,10 +132,7 @@ export default function CreateHackathonPage() {
               <textarea
                 value={form.description}
                 onChange={(e) =>
-                  updateField(
-                    "description",
-                    e.target.value
-                  )
+                  updateField("description", e.target.value)
                 }
                 placeholder="Describe your hackathon..."
                 required
@@ -133,12 +141,9 @@ export default function CreateHackathonPage() {
               />
 
               <div className="grid gap-5 md:grid-cols-2">
-
                 <select
                   value={form.mode}
-                  onChange={(e) =>
-                    updateField("mode", e.target.value)
-                  }
+                  onChange={(e) => updateField("mode", e.target.value)}
                   className="rounded-xl border p-3"
                 >
                   <option>Online</option>
@@ -149,30 +154,23 @@ export default function CreateHackathonPage() {
                 <input
                   value={form.location}
                   onChange={(e) =>
-                    updateField(
-                      "location",
-                      e.target.value
-                    )
+                    updateField("location", e.target.value)
                   }
                   placeholder="Location / Platform"
                   required
                   className="rounded-xl border p-3"
                 />
-
               </div>
-
             </div>
-
           </section>
 
+          {/* Competition Details */}
           <section className="rounded-2xl border bg-white p-6 shadow-sm">
-
             <h2 className="mb-5 text-lg font-semibold">
               Competition Details
             </h2>
 
             <div className="grid gap-5 md:grid-cols-3">
-
               <div>
                 <label className="mb-2 block text-sm font-medium">
                   Team Size
@@ -184,10 +182,7 @@ export default function CreateHackathonPage() {
                   max={20}
                   value={form.team_size}
                   onChange={(e) =>
-                    updateField(
-                      "team_size",
-                      Number(e.target.value)
-                    )
+                    updateField("team_size", Number(e.target.value))
                   }
                   className="w-full rounded-xl border p-3"
                 />
@@ -201,10 +196,7 @@ export default function CreateHackathonPage() {
                 <select
                   value={form.difficulty}
                   onChange={(e) =>
-                    updateField(
-                      "difficulty",
-                      e.target.value
-                    )
+                    updateField("difficulty", e.target.value)
                   }
                   className="w-full rounded-xl border p-3"
                 >
@@ -223,29 +215,23 @@ export default function CreateHackathonPage() {
                 <input
                   value={form.prize_pool}
                   onChange={(e) =>
-                    updateField(
-                      "prize_pool",
-                      e.target.value
-                    )
+                    updateField("prize_pool", e.target.value)
                   }
                   placeholder="₹1,00,000"
                   required
                   className="w-full rounded-xl border p-3"
                 />
               </div>
-
             </div>
-
           </section>
 
+          {/* Schedule */}
           <section className="rounded-2xl border bg-white p-6 shadow-sm">
-
             <h2 className="mb-5 text-lg font-semibold">
               Schedule
             </h2>
 
-            <div className="grid gap-5 md:grid-cols-3">
-
+            <div className="grid gap-5 md:grid-cols-2">
               <div>
                 <label className="mb-2 block text-sm font-medium">
                   Registration Deadline
@@ -255,10 +241,7 @@ export default function CreateHackathonPage() {
                   type="date"
                   value={form.registration_deadline}
                   onChange={(e) =>
-                    updateField(
-                      "registration_deadline",
-                      e.target.value
-                    )
+                    updateField("registration_deadline", e.target.value)
                   }
                   required
                   className="w-full rounded-xl border p-3"
@@ -267,17 +250,14 @@ export default function CreateHackathonPage() {
 
               <div>
                 <label className="mb-2 block text-sm font-medium">
-                  Start Date
+                  Hackathon Start Date
                 </label>
 
                 <input
                   type="date"
                   value={form.start_date}
                   onChange={(e) =>
-                    updateField(
-                      "start_date",
-                      e.target.value
-                    )
+                    updateField("start_date", e.target.value)
                   }
                   required
                   className="w-full rounded-xl border p-3"
@@ -286,42 +266,69 @@ export default function CreateHackathonPage() {
 
               <div>
                 <label className="mb-2 block text-sm font-medium">
-                  End Date
+                  Hackathon Start Time
                 </label>
 
                 <input
-                  type="date"
-                  value={form.end_date}
+                  type="time"
+                  value={form.start_time}
                   onChange={(e) =>
-                    updateField(
-                      "end_date",
-                      e.target.value
-                    )
+                    updateField("start_time", e.target.value)
                   }
                   required
                   className="w-full rounded-xl border p-3"
                 />
               </div>
 
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Hackathon End Date
+                </label>
+
+                <input
+                  type="date"
+                  value={form.end_date}
+                  onChange={(e) =>
+                    updateField("end_date", e.target.value)
+                  }
+                  required
+                  className="w-full rounded-xl border p-3"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Hackathon End Time
+                </label>
+
+                <input
+                  type="time"
+                  value={form.end_time}
+                  onChange={(e) =>
+                    updateField("end_time", e.target.value)
+                  }
+                  required
+                  className="w-full rounded-xl border p-3"
+                />
+              </div>
             </div>
 
+            <p className="mt-4 text-xs text-gray-500">
+              All hackathon times are interpreted as Indian Standard Time (IST).
+            </p>
           </section>
 
+          {/* Additional Information */}
           <section className="rounded-2xl border bg-white p-6 shadow-sm">
-
             <h2 className="mb-5 text-lg font-semibold">
               Additional Information
             </h2>
 
             <div className="space-y-5">
-
               <input
                 value={form.banner_image}
                 onChange={(e) =>
-                  updateField(
-                    "banner_image",
-                    e.target.value
-                  )
+                  updateField("banner_image", e.target.value)
                 }
                 placeholder="Banner image URL (optional)"
                 className="w-full rounded-xl border p-3"
@@ -331,26 +338,19 @@ export default function CreateHackathonPage() {
                 type="url"
                 value={form.website}
                 onChange={(e) =>
-                  updateField(
-                    "website",
-                    e.target.value
-                  )
+                  updateField("website", e.target.value)
                 }
                 placeholder="Official website URL (optional)"
                 className="w-full rounded-xl border p-3"
               />
-
             </div>
-
           </section>
 
+          {/* Actions */}
           <div className="flex justify-end gap-3">
-
             <button
               type="button"
-              onClick={() =>
-                router.push("/organizer/hackathons")
-              }
+              onClick={() => router.push("/organizer/hackathons")}
               className="rounded-xl border px-6 py-3 font-semibold text-gray-700"
             >
               Cancel
@@ -361,15 +361,10 @@ export default function CreateHackathonPage() {
               disabled={loading}
               className="rounded-xl bg-violet-600 px-7 py-3 font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
             >
-              {loading
-                ? "Creating..."
-                : "Create Hackathon"}
+              {loading ? "Creating..." : "Create Hackathon"}
             </button>
-
           </div>
-
         </form>
-
       </div>
     </div>
   );

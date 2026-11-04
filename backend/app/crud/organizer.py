@@ -145,6 +145,7 @@ async def update_organizer_hackathon(
 # DELETE HACKATHON
 # ============================================================
 
+
 async def delete_organizer_hackathon(
     db: AsyncSession,
     organizer_id: UUID,
@@ -162,10 +163,21 @@ async def delete_organizer_hackathon(
     if hackathon is None:
         return False
 
+    # Check whether participants are registered.
+    participant_result = await db.execute(
+        select(Participant.id)
+        .where(Participant.hackathon_id == hackathon_id)
+        .limit(1)
+    )
+
+    if participant_result.scalar_one_or_none() is not None:
+        return "HAS_PARTICIPANTS"
+
     await db.delete(hackathon)
     await db.commit()
 
     return True
+
 
 
 # ============================================================

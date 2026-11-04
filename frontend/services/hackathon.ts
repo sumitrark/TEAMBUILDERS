@@ -1,3 +1,4 @@
+
 import { api } from "@/lib/api";
 
 export interface Hackathon {
@@ -5,17 +6,29 @@ export interface Hackathon {
   title: string;
   description: string;
   organizer: string;
+
   mode: string;
   location: string;
   team_size: number;
   difficulty: string;
   prize_pool: string;
-  registration_deadline: string;
-  start_date: string;
-  end_date: string;
+
+  // Legacy date fields - nullable because they
+  // are not present in the current database model.
+  registration_deadline?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+
+  // Current lifecycle timestamps from the backend.
+  registration_start?: string | null;
+  registration_end?: string | null;
+  hackathon_start?: string | null;
+  hackathon_end?: string | null;
+
   banner_image: string;
   website: string;
   status: string;
+  is_active?: boolean;
   lifecycle_status?: string | null;
 }
 
@@ -62,14 +75,19 @@ export interface WorkspaceData {
   proctoring_strikes: number;
   flagged_for_review: boolean;
 }
-export async function getHackathons() {
-  const res = await api.get("/hackathons");
-  return res.data;
+
+export async function getHackathons(): Promise<Hackathon[]> {
+  const res = await api.get("/hackathons/");
+
+  return Array.isArray(res.data) ? res.data : [];
 }
 
 export async function getWorkspace(
   hackathonId: string
 ): Promise<WorkspaceData> {
-  const res = await api.get(`/hackathons/${hackathonId}/workspace`);
+  const res = await api.get(
+    `/hackathons/${hackathonId}/workspace`
+  );
+
   return res.data;
 }
