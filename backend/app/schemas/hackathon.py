@@ -12,16 +12,17 @@ class HackathonCreate(BaseModel):
 
     mode: str
     location: str
-
     team_size: int = Field(ge=2, le=20)
 
     difficulty: str
     prize_pool: str
 
-    registration_deadline: date
-    start_date: date
-    end_date: date
+    # Legacy date fields are optional.
+    registration_deadline: date | None = None
+    start_date: date | None = None
+    end_date: date | None = None
 
+    # New lifecycle datetime fields.
     registration_start: datetime | None = None
     registration_end: datetime | None = None
     hackathon_start: datetime | None = None
@@ -32,7 +33,11 @@ class HackathonCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_lifecycle_ordering(self):
-        if self.start_date > self.end_date:
+        if (
+            self.start_date
+            and self.end_date
+            and self.start_date > self.end_date
+        ):
             raise ValueError(
                 "Start date must be before or equal to end date"
             )
@@ -66,6 +71,7 @@ class HackathonCreate(BaseModel):
 
         if (
             self.hackathon_start
+            and self.start_date
             and self.hackathon_start.date() != self.start_date
         ):
             raise ValueError(
@@ -74,6 +80,7 @@ class HackathonCreate(BaseModel):
 
         if (
             self.hackathon_end
+            and self.end_date
             and self.hackathon_end.date() != self.end_date
         ):
             raise ValueError(
@@ -93,6 +100,7 @@ class HackathonUpdate(BaseModel):
     description: str | None = None
     mode: str | None = None
     location: str | None = None
+
     team_size: int | None = Field(
         default=None,
         ge=2,
@@ -102,10 +110,12 @@ class HackathonUpdate(BaseModel):
     difficulty: str | None = None
     prize_pool: str | None = None
 
+    # Legacy date fields.
     registration_deadline: date | None = None
     start_date: date | None = None
     end_date: date | None = None
 
+    # New lifecycle datetime fields.
     registration_start: datetime | None = None
     registration_end: datetime | None = None
     hackathon_start: datetime | None = None
@@ -117,7 +127,6 @@ class HackathonUpdate(BaseModel):
 
 class HackathonResponse(BaseModel):
     id: UUID
-
     organizer_id: UUID | None
 
     title: str
@@ -130,12 +139,12 @@ class HackathonResponse(BaseModel):
     difficulty: str
     prize_pool: str
 
-    # Legacy fields: optional because they are not present
-    # in the current Hackathon database model.
+    # Legacy fields.
     registration_deadline: date | None = None
     start_date: date | None = None
     end_date: date | None = None
 
+    # Lifecycle datetime fields.
     registration_start: datetime | None = None
     registration_end: datetime | None = None
     hackathon_start: datetime | None = None
@@ -149,6 +158,4 @@ class HackathonResponse(BaseModel):
 
     lifecycle_status: str | None = None
 
-    model_config = ConfigDict(
-        from_attributes=True
-    )
+    model_config = ConfigDict(from_attributes=True)
