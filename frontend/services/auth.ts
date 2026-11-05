@@ -11,6 +11,19 @@ export const register = async (data: RegisterRequest) => {
   return response.data;
 };
 
+/**
+ * Register then immediately log in with the same credentials.
+ * Used by the judge registration flow so the user lands directly
+ * on the invitation page without a separate login step.
+ */
+export const registerAndLogin = async (
+  data: RegisterRequest
+): Promise<LoginResponse> => {
+  await api.post("/auth/register", data);
+
+  return login({ email: data.email, password: data.password });
+};
+
 export const login = async (
   data: LoginRequest
 ): Promise<LoginResponse> => {
@@ -45,6 +58,22 @@ export const getCurrentUser = async (): Promise<User> => {
 };
 
 export const logout = () => {
+  const refreshToken = localStorage.getItem("refresh_token");
+
+  // Clear local session immediately so the UI/route guards react
+  // right away, regardless of whether the network call below
+  // succeeds.
   localStorage.removeItem("access_token");
   localStorage.removeItem("refresh_token");
+
+  if (refreshToken) {
+    // Best-effort server-side revocation so the refresh token can't
+    // be replayed later even if it leaks.
+    api
+      .post("/auth/logout", { refresh_token: refreshToken })
+      .catch(() => {
+        // Local session is already cleared above; nothing more to do
+        // if the server is unreachable.
+      });
+  }
 };

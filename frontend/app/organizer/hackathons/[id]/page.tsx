@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -21,15 +22,27 @@ import {
   Hackathon,
 } from "@/services/organizerHackathon";
 
+function formatHackathonDateTime(value?: string | null) {
+  if (!value) return "Not specified";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "Not specified";
+
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Kolkata",
+  }).format(date);
+}
+
 export default function ManageHackathonPage() {
   const params = useParams();
   const router = useRouter();
 
   const id = params.id as string;
 
-  const [hackathon, setHackathon] =
-    useState<Hackathon | null>(null);
-
+  const [hackathon, setHackathon] = useState<Hackathon | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -45,10 +58,7 @@ export default function ManageHackathonPage() {
 
       setHackathon(found ?? null);
     } catch (error) {
-      console.error(
-        "Failed to load hackathon:",
-        error
-      );
+      console.error("Failed to load hackathon:", error);
     } finally {
       setLoading(false);
     }
@@ -66,14 +76,12 @@ export default function ManageHackathonPage() {
     try {
       setActionLoading(true);
 
-      const updated =
-        await updateOrganizerHackathonStatus(
-          hackathon.id,
-          status
-        );
+      const updated = await updateOrganizerHackathonStatus(
+        hackathon.id,
+        status
+      );
 
       setHackathon(updated);
-
     } catch (error: any) {
       alert(
         error?.response?.data?.detail ??
@@ -96,14 +104,11 @@ export default function ManageHackathonPage() {
     try {
       setActionLoading(true);
 
-      await deleteOrganizerHackathon(
-        hackathon.id
-      );
+      await deleteOrganizerHackathon(hackathon.id);
 
       alert("Hackathon deleted successfully.");
 
       router.push("/organizer/hackathons");
-
     } catch (error: any) {
       alert(
         error?.response?.data?.detail ??
@@ -128,7 +133,6 @@ export default function ManageHackathonPage() {
     return (
       <div className="p-8">
         <div className="rounded-2xl border bg-white p-12 text-center">
-
           <Trophy className="mx-auto h-12 w-12 text-gray-300" />
 
           <h1 className="mt-4 text-xl font-bold">
@@ -143,18 +147,21 @@ export default function ManageHackathonPage() {
           >
             Back to Hackathons
           </button>
-
         </div>
       </div>
     );
   }
 
+  const startDateTime =
+    hackathon.hackathon_start || hackathon.start_date;
+
+  const endDateTime =
+    hackathon.hackathon_end || hackathon.end_date;
+
   return (
     <div className="min-h-screen bg-slate-50">
-
       {/* Header */}
       <div className="border-b bg-white px-8 py-6">
-
         <button
           onClick={() =>
             router.push("/organizer/hackathons")
@@ -166,10 +173,8 @@ export default function ManageHackathonPage() {
         </button>
 
         <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
-
           <div>
             <div className="flex items-center gap-3">
-
               <h1 className="text-3xl font-bold text-gray-900">
                 {hackathon.title}
               </h1>
@@ -177,7 +182,6 @@ export default function ManageHackathonPage() {
               <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
                 {hackathon.status}
               </span>
-
             </div>
 
             <p className="mt-2 text-gray-500">
@@ -186,7 +190,6 @@ export default function ManageHackathonPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-
             <button
               onClick={() =>
                 router.push(
@@ -202,9 +205,7 @@ export default function ManageHackathonPage() {
             {hackathon.status === "Open" ? (
               <button
                 disabled={actionLoading}
-                onClick={() =>
-                  changeStatus("Closed")
-                }
+                onClick={() => changeStatus("Closed")}
                 className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
               >
                 <Power className="h-4 w-4" />
@@ -213,9 +214,7 @@ export default function ManageHackathonPage() {
             ) : (
               <button
                 disabled={actionLoading}
-                onClick={() =>
-                  changeStatus("Open")
-                }
+                onClick={() => changeStatus("Open")}
                 className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
               >
                 <Power className="h-4 w-4" />
@@ -231,17 +230,13 @@ export default function ManageHackathonPage() {
               <Trash2 className="h-4 w-4" />
               Delete
             </button>
-
           </div>
-
         </div>
       </div>
 
       <div className="p-8">
-
         {/* Banner */}
         <div className="mb-6 h-64 overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600">
-
           {hackathon.banner_image ? (
             <img
               src={hackathon.banner_image}
@@ -253,16 +248,12 @@ export default function ManageHackathonPage() {
               <Trophy className="h-20 w-20 text-white/40" />
             </div>
           )}
-
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
-
           {/* Main */}
           <div className="lg:col-span-2">
-
             <div className="rounded-2xl border bg-white p-6 shadow-sm">
-
               <h2 className="text-xl font-bold">
                 About the Hackathon
               </h2>
@@ -270,22 +261,18 @@ export default function ManageHackathonPage() {
               <p className="mt-4 whitespace-pre-wrap leading-7 text-gray-600">
                 {hackathon.description}
               </p>
-
             </div>
-
           </div>
 
           {/* Details */}
           <div className="space-y-4">
-
             <div className="rounded-2xl border bg-white p-5 shadow-sm">
-
               <h3 className="mb-4 font-semibold">
                 Event Details
               </h3>
 
               <div className="space-y-4 text-sm">
-
+                {/* Registration Deadline */}
                 <div className="flex gap-3">
                   <CalendarDays className="h-5 w-5 text-violet-600" />
 
@@ -293,26 +280,45 @@ export default function ManageHackathonPage() {
                     <p className="font-medium">
                       Registration Deadline
                     </p>
+
                     <p className="text-gray-500">
-                      {hackathon.registration_deadline}
+                      {hackathon.registration_deadline || "Not specified"}
                     </p>
                   </div>
                 </div>
 
+                {/* Hackathon Schedule */}
                 <div className="flex gap-3">
                   <CalendarDays className="h-5 w-5 text-violet-600" />
 
                   <div>
                     <p className="font-medium">
-                      Event Dates
+                      Hackathon Schedule
                     </p>
-                    <p className="text-gray-500">
-                      {hackathon.start_date} →{" "}
-                      {hackathon.end_date}
+
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                      Starts
+                    </p>
+
+                    <p className="text-gray-600">
+                      {formatHackathonDateTime(startDateTime)}
+                    </p>
+
+                    <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                      Ends
+                    </p>
+
+                    <p className="text-gray-600">
+                      {formatHackathonDateTime(endDateTime)}
+                    </p>
+
+                    <p className="mt-2 text-xs text-gray-400">
+                      All times in IST
                     </p>
                   </div>
                 </div>
 
+                {/* Location */}
                 <div className="flex gap-3">
                   <MapPin className="h-5 w-5 text-violet-600" />
 
@@ -320,12 +326,14 @@ export default function ManageHackathonPage() {
                     <p className="font-medium">
                       Location
                     </p>
+
                     <p className="text-gray-500">
                       {hackathon.location}
                     </p>
                   </div>
                 </div>
 
+                {/* Team Size */}
                 <div className="flex gap-3">
                   <Users className="h-5 w-5 text-violet-600" />
 
@@ -333,12 +341,14 @@ export default function ManageHackathonPage() {
                     <p className="font-medium">
                       Team Size
                     </p>
+
                     <p className="text-gray-500">
                       Up to {hackathon.team_size} members
                     </p>
                   </div>
                 </div>
 
+                {/* Prize Pool */}
                 <div className="flex gap-3">
                   <Trophy className="h-5 w-5 text-violet-600" />
 
@@ -346,12 +356,14 @@ export default function ManageHackathonPage() {
                     <p className="font-medium">
                       Prize Pool
                     </p>
+
                     <p className="text-gray-500">
                       {hackathon.prize_pool}
                     </p>
                   </div>
                 </div>
 
+                {/* Mode */}
                 <div className="flex gap-3">
                   <Globe className="h-5 w-5 text-violet-600" />
 
@@ -359,25 +371,22 @@ export default function ManageHackathonPage() {
                     <p className="font-medium">
                       Mode
                     </p>
+
                     <p className="text-gray-500">
                       {hackathon.mode}
                     </p>
                   </div>
                 </div>
-
               </div>
-
             </div>
 
             {/* Organizer Actions */}
             <div className="rounded-2xl border bg-white p-5 shadow-sm">
-
               <h3 className="mb-4 font-semibold">
                 Manage
               </h3>
 
               <div className="space-y-2">
-
                 <button
                   onClick={() =>
                     router.push(
@@ -411,16 +420,44 @@ export default function ManageHackathonPage() {
                   ⚖️ Manage Judges
                 </button>
 
+                <button
+                  onClick={() =>
+                    router.push(
+                      `/organizer/hackathons/${hackathon.id}/criteria`
+                    )
+                  }
+                  className="w-full rounded-xl border px-4 py-3 text-left text-sm font-medium hover:bg-gray-50"
+                >
+                  Evaluation Criteria
+                </button>
+
+                <button
+                  onClick={() =>
+                    router.push(
+                      `/organizer/hackathons/${hackathon.id}/projects`
+                    )
+                  }
+                  className="w-full rounded-xl border px-4 py-3 text-left text-sm font-medium hover:bg-gray-50"
+                >
+                  📁 Submitted Projects
+                </button>
+
+                <button
+                  onClick={() =>
+                    router.push(
+                      `/organizer/hackathons/${hackathon.id}/evaluation`
+                    )
+                  }
+                  className="w-full rounded-xl border px-4 py-3 text-left text-sm font-medium hover:bg-gray-50"
+                >
+                  📊 Evaluation & Results
+                </button>
               </div>
-
             </div>
-
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 }
+

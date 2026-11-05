@@ -32,3 +32,4 @@ def downgrade() -> None:
     op.drop_constraint(None, 'teams', type_='foreignkey')
     op.drop_column('teams', 'hackathon_id')
     # ### end Alembic commands ###
+

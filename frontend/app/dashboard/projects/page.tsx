@@ -25,6 +25,7 @@ export default function ProjectsPage() {
     github_url: "",
     demo_url: "",
     team_id: null,
+    ai_tools_used: "",
   });
 
   const [saving, setSaving] = useState(false);
@@ -64,6 +65,7 @@ export default function ProjectsPage() {
       github_url: "",
       demo_url: "",
       team_id: null,
+      ai_tools_used: "",
     });
 
     setEditingProject(null);
@@ -80,6 +82,7 @@ export default function ProjectsPage() {
       github_url: "",
       demo_url: "",
       team_id: null,
+      ai_tools_used: "",
     });
 
     setShowForm(true);
@@ -95,6 +98,7 @@ export default function ProjectsPage() {
       github_url: project.github_url || "",
       demo_url: project.demo_url || "",
       team_id: project.team_id,
+      ai_tools_used: project.ai_tools_used || "",
     });
 
     setShowForm(true);
@@ -354,6 +358,30 @@ export default function ProjectsPage() {
               </div>
             </div>
 
+            <div>
+              <label className="mb-2 block text-sm font-medium">
+                AI Tools Used (optional)
+              </label>
+
+              <p className="mb-2 text-xs text-gray-400">
+                Transparency, not policing - let judges know what AI
+                assistance you used, if any.
+              </p>
+
+              <textarea
+                value={form.ai_tools_used || ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    ai_tools_used: e.target.value,
+                  })
+                }
+                placeholder="e.g. ChatGPT for boilerplate code, GitHub Copilot for autocomplete"
+                rows={2}
+                className="w-full rounded-xl border px-4 py-3 outline-none focus:border-black"
+              />
+            </div>
+
             {/* BUTTONS */}
 
             <div className="flex gap-3 pt-2">
@@ -492,6 +520,13 @@ export default function ProjectsPage() {
                   </a>
                 )}
               </div>
+
+              {project.ai_tools_used && (
+                <div className="rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-700">
+                  <span className="font-medium">AI tools used:</span>{" "}
+                  {project.ai_tools_used}
+                </div>
+              )}
 
               {/* ACTIONS */}
 

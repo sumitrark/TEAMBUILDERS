@@ -7,10 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.hackathon import Hackathon
 from app.models.participant import Participant
 from app.models.team import Team
+from app.models.team_hackathon import TeamHackathon
+from app.models.team_member import TeamMember
 from app.models.project import Project
 from app.models.judge import Judge
 from app.models.user import User
 from app.schemas.organizer import OrganizerHackathonUpdate
+from app.crud.notification import create_notification
 
 
 # ============================================================
@@ -142,6 +145,7 @@ async def update_organizer_hackathon(
 # DELETE HACKATHON
 # ============================================================
 
+
 async def delete_organizer_hackathon(
     db: AsyncSession,
     organizer_id: UUID,
@@ -159,10 +163,21 @@ async def delete_organizer_hackathon(
     if hackathon is None:
         return False
 
+    # Check whether participants are registered.
+    participant_result = await db.execute(
+        select(Participant.id)
+        .where(Participant.hackathon_id == hackathon_id)
+        .limit(1)
+    )
+
+    if participant_result.scalar_one_or_none() is not None:
+        return "HAS_PARTICIPANTS"
+
     await db.delete(hackathon)
     await db.commit()
 
     return True
+
 
 
 # ============================================================
@@ -384,6 +399,12 @@ async def invite_judge(
     email: str,
 ):
     from app.models.judge import Judge
+    from app.crud.judge_invitation import (
+        create_invitation,
+        get_pending_invitation_for_hackathon_email,
+    )
+
+    normalized_email = email.lower().strip()
 
     # --------------------------------------------------------
     # 1. Verify organizer owns hackathon
@@ -402,68 +423,117 @@ async def invite_judge(
         return "HACKATHON_NOT_FOUND"
 
     # --------------------------------------------------------
-    # 2. Find user by email
+    # 2. If a matching user account exists, check for conflicts.
+    #    (If no account exists yet, none of these can apply - that
+    #    is exactly the case this workflow is meant to support.)
     # --------------------------------------------------------
 
     result = await db.execute(
-        select(User).where(
-            User.email == email
-        )
+        select(User).where(User.email == normalized_email)
     )
-
     user = result.scalar_one_or_none()
 
-    if user is None:
-        return "USER_NOT_FOUND"
-
-    # --------------------------------------------------------
-    # 3. Check whether user is already a participant
-    # --------------------------------------------------------
-
-    result = await db.execute(
-        select(Participant).where(
-            Participant.hackathon_id == hackathon_id,
-            Participant.user_id == user.id,
+    if user is not None:
+        result = await db.execute(
+            select(Participant).where(
+                Participant.hackathon_id == hackathon_id,
+                Participant.user_id == user.id,
+            )
         )
+
+        if result.scalar_one_or_none() is not None:
+            return "PARTICIPANT_CONFLICT"
+
+        result = await db.execute(
+            select(Judge).where(
+                Judge.hackathon_id == hackathon_id,
+                Judge.user_id == user.id,
+                Judge.status == "active",
+            )
+        )
+
+        if result.scalar_one_or_none() is not None:
+            return "ALREADY_JUDGE"
+
+    # --------------------------------------------------------
+    # 3. Prevent duplicate active invitations for the same
+    #    hackathon + email - resend instead.
+    # --------------------------------------------------------
+
+    existing_pending = await get_pending_invitation_for_hackathon_email(
+        db, hackathon_id, normalized_email
     )
 
-    participant = result.scalar_one_or_none()
-
-    if participant is not None:
-        return "PARTICIPANT_CONFLICT"
+    if existing_pending is not None:
+        return "ALREADY_INVITED"
 
     # --------------------------------------------------------
-    # 4. Check existing judge
+    # 4. Create the invitation (works whether or not the invited
+    #    email has an account yet).
     # --------------------------------------------------------
 
-    result = await db.execute(
-        select(Judge).where(
-            Judge.hackathon_id == hackathon_id,
-            Judge.user_id == user.id,
-        )
-    )
-
-    existing_judge = result.scalar_one_or_none()
-
-    if existing_judge is not None:
-        return "ALREADY_JUDGE"
-
-    # --------------------------------------------------------
-    # 5. Create judge invitation
-    # --------------------------------------------------------
-
-    judge = Judge(
+    return await create_invitation(
+        db=db,
         hackathon_id=hackathon_id,
-        user_id=user.id,
-        status="invited",
+        organizer_id=organizer_id,
+        email=normalized_email,
     )
 
-    db.add(judge)
 
-    await db.commit()
-    await db.refresh(judge)
+async def get_organizer_judge_invitations(
+    db: AsyncSession,
+    organizer_id: UUID,
+    hackathon_id: UUID,
+):
+    from app.crud.judge_invitation import get_hackathon_invitations
 
-    return judge
+    result = await db.execute(
+        select(Hackathon).where(
+            Hackathon.id == hackathon_id,
+            Hackathon.organizer_id == organizer_id,
+        )
+    )
+
+    if result.scalar_one_or_none() is None:
+        return "HACKATHON_NOT_FOUND"
+
+    return await get_hackathon_invitations(db, hackathon_id)
+
+
+async def resend_organizer_judge_invitation(
+    db: AsyncSession,
+    organizer_id: UUID,
+    invitation_id: UUID,
+):
+    from app.crud.judge_invitation import get_invitation_by_id, resend_invitation
+
+    invitation = await get_invitation_by_id(db, invitation_id)
+
+    if invitation is None or invitation.organizer_id != organizer_id:
+        return "NOT_FOUND"
+
+    if invitation.status not in ("pending", "expired"):
+        return "NOT_RESENDABLE"
+
+    return await resend_invitation(db, invitation)
+
+
+async def cancel_organizer_judge_invitation(
+    db: AsyncSession,
+    organizer_id: UUID,
+    invitation_id: UUID,
+):
+    from app.crud.judge_invitation import get_invitation_by_id, cancel_invitation
+
+    invitation = await get_invitation_by_id(db, invitation_id)
+
+    if invitation is None or invitation.organizer_id != organizer_id:
+        return "NOT_FOUND"
+
+    if invitation.status != "pending":
+        return "NOT_CANCELLABLE"
+
+    return await cancel_invitation(db, invitation)
 
 async def get_organizer_participants(
     db: AsyncSession,
@@ -482,6 +552,7 @@ async def get_organizer_participants(
     if hackathon is None:
         return None
 
+    # Start with explicit Participant records.
     result = await db.execute(
         select(Participant, User)
         .join(
@@ -496,8 +567,8 @@ async def get_organizer_participants(
 
     rows = result.all()
 
-    return [
-        {
+    participants_by_user = {
+        participant.user_id: {
             "id": participant.id,
             "user_id": participant.user_id,
             "name": user.full_name,
@@ -510,7 +581,67 @@ async def get_organizer_participants(
             "team_id": participant.team_id,
         }
         for participant, user in rows
-    ]
+    }
+
+    # Also include members of teams registered through TeamHackathon.
+    registration_result = await db.execute(
+        select(
+            TeamHackathon.team_id,
+            Team.owner_id,
+            TeamMember.user_id,
+        )
+        .join(
+            Team,
+            TeamHackathon.team_id == Team.id,
+        )
+        .outerjoin(
+            TeamMember,
+            TeamMember.team_id == Team.id,
+        )
+        .where(
+            TeamHackathon.hackathon_id == hackathon_id,
+            TeamHackathon.status == "registered",
+        )
+    )
+
+    registered_members = registration_result.all()
+
+    for team_id, owner_id, member_id in registered_members:
+        user_ids = {owner_id}
+        if member_id is not None:
+            user_ids.add(member_id)
+
+        for user_id in user_ids:
+            if user_id in participants_by_user:
+                if participants_by_user[user_id]["team_id"] is None:
+                    participants_by_user[user_id]["team_id"] = team_id
+                continue
+
+            user_result = await db.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+
+            if user is None:
+                continue
+
+            participants_by_user[user_id] = {
+                "id": user.id,
+                "user_id": user.id,
+                "name": user.full_name,
+                "username": user.username,
+                "email": user.email,
+                "college": user.college,
+                "course": user.course,
+                "year": user.year,
+                "status": "Joined",
+                "team_id": team_id,
+            }
+
+    return sorted(
+        participants_by_user.values(),
+        key=lambda participant: (participant["name"] or "").lower(),
+    )
 
 
 async def get_organizer_teams(
@@ -530,11 +661,22 @@ async def get_organizer_teams(
     if hackathon is None:
         return None
 
+    # TeamHackathon is the canonical hackathon registration relation.
+    # Team.hackathon_id is retained for legacy compatibility.
     result = await db.execute(
         select(Team)
-        .where(
-            Team.hackathon_id == hackathon_id
+        .outerjoin(
+            TeamHackathon,
+            TeamHackathon.team_id == Team.id,
         )
+        .where(
+            (Team.hackathon_id == hackathon_id)
+            | (
+                (TeamHackathon.hackathon_id == hackathon_id)
+                & (TeamHackathon.status == "registered")
+            )
+        )
+        .distinct()
         .order_by(Team.created_at.desc())
     )
 
@@ -543,23 +685,32 @@ async def get_organizer_teams(
     response = []
 
     for team in teams:
+        # Get members from both Participant and the actual team membership
+        # table so older registrations remain visible.
         member_result = await db.execute(
-            select(
-                User.id,
-                User.full_name,
-                User.username,
-                User.email,
-            )
+            select(User)
             .join(
-                Participant,
-                Participant.user_id == User.id,
+                TeamMember,
+                TeamMember.user_id == User.id,
             )
             .where(
-                Participant.team_id == team.id
+                TeamMember.team_id == team.id
             )
         )
 
-        members = member_result.all()
+        members = {
+            member.id: member
+            for member in member_result.scalars().all()
+        }
+
+        # Team owner is also a registered team member.
+        if team.owner_id not in members:
+            owner_result = await db.execute(
+                select(User).where(User.id == team.owner_id)
+            )
+            owner = owner_result.scalar_one_or_none()
+            if owner is not None:
+                members[owner.id] = owner
 
         response.append(
             {
@@ -568,7 +719,7 @@ async def get_organizer_teams(
                 "description": team.description,
                 "max_members": team.max_members,
                 "owner_id": team.owner_id,
-                "hackathon_id": team.hackathon_id,
+                "hackathon_id": hackathon_id,
                 "members": [
                     {
                         "id": member.id,
@@ -576,12 +727,13 @@ async def get_organizer_teams(
                         "username": member.username,
                         "email": member.email,
                     }
-                    for member in members
+                    for member in members.values()
                 ],
             }
         )
 
     return response
+
 
 async def get_organizer_analytics(
     db: AsyncSession,
@@ -850,7 +1002,9 @@ async def get_organizer_projects(
     if not team_ids:
         return []
 
-    # Get projects belonging to those teams
+    # Get projects belonging to those teams, enriched with submission status
+    from app.models.submission import Submission
+
     project_result = await db.execute(
         select(Project)
         .where(
@@ -861,7 +1015,42 @@ async def get_organizer_projects(
         )
     )
 
-    return project_result.scalars().all()
+    projects = project_result.scalars().all()
+
+    # Fetch submission statuses in one query
+    if projects:
+        project_ids = [p.id for p in projects]
+        submission_result = await db.execute(
+            select(Submission.project_id, Submission.status)
+            .where(
+                Submission.project_id.in_(project_ids),
+                Submission.status.in_(
+                    ["SUBMITTED", "LOCKED", "UNDER_REVIEW", "EVALUATED"]
+                ),
+            )
+            .distinct(Submission.project_id)
+        )
+        submitted_project_ids = {row[0] for row in submission_result.all()}
+    else:
+        submitted_project_ids = set()
+
+    # Return enriched dicts so the API layer can serialize cleanly
+    return [
+        {
+            "id": p.id,
+            "title": p.title,
+            "description": p.description,
+            "tech_stack": p.tech_stack,
+            "github_url": p.github_url,
+            "demo_url": p.demo_url,
+            "owner_id": p.owner_id,
+            "team_id": p.team_id,
+            "ai_tools_used": p.ai_tools_used,
+            "created_at": p.created_at,
+            "is_submitted": p.id in submitted_project_ids,
+        }
+        for p in projects
+    ]
 
 
 async def get_organizer_project(
@@ -904,4 +1093,5 @@ async def get_organizer_project(
     )
 
     return project_result.scalar_one_or_none()
+
 

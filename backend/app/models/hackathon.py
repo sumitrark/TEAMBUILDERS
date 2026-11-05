@@ -8,7 +8,7 @@ from sqlalchemy import (
     ForeignKey,
 )
 from sqlalchemy.orm import Mapped, mapped_column
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import uuid
 import secrets
 from app.db.base import Base
@@ -69,20 +69,68 @@ class Hackathon(Base):
         String(100)
     )
 
+    
     # =====================================================
     # DATES
     # =====================================================
 
-    registration_deadline: Mapped[date] = mapped_column(
-        Date
+    registration_start: Mapped[datetime | None] = mapped_column(
+    DateTime(timezone=True),
+    nullable=True,
     )
 
-    start_date: Mapped[date] = mapped_column(
-        Date
+    registration_end: Mapped[datetime | None] = mapped_column(
+    DateTime(timezone=True),
+    nullable=True,
     )
 
-    end_date: Mapped[date] = mapped_column(
-        Date
+    hackathon_start: Mapped[datetime | None] = mapped_column(
+    DateTime(timezone=True),
+    nullable=True,
+   )
+
+    hackathon_end: Mapped[datetime | None] = mapped_column(
+    DateTime(timezone=True),
+    nullable=True,
+   )
+
+    
+
+
+    # =====================================================
+    # PRECISE LIFECYCLE TIMESTAMPS
+    #
+    # Additive, alongside the legacy date-only columns above rather
+    # than replacing them - existing schemas/CRUD/frontend forms
+    # still read those directly, and a full rename is a separate,
+    # larger cleanup. Nullable for backward compatibility with any
+    # write path that hasn't been updated to populate them yet;
+    # lifecycle status calculation falls back to the legacy date
+    # fields when these are unset (see services/hackathon_lifecycle.py).
+    # =====================================================
+
+    registration_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    registration_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    hackathon_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    hackathon_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    results_announcement_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     # =====================================================
@@ -123,12 +171,12 @@ class Hackathon(Base):
     default=lambda: secrets.token_urlsafe(24),
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
     )
 
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )

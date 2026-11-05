@@ -106,3 +106,52 @@ export async function cancelOrganizerHackathon(
 
   return response.data;
 }
+// ============================================================
+// EVALUATION PROGRESS
+// ============================================================
+
+export interface EvaluationProgress {
+  submitted_projects: number;
+  evaluated_projects: number;
+  pending_projects: number;
+  all_projects_evaluated: boolean;
+  results_announcement_at: string | null;
+}
+
+export async function getEvaluationProgress(
+  hackathonId: string
+): Promise<EvaluationProgress> {
+  const response = await api.get(
+    `/organizer/hackathons/${hackathonId}/evaluation-progress`
+  );
+
+  return response.data;
+}
+
+// ============================================================
+// RESULTS ANNOUNCEMENT
+// ============================================================
+
+export async function scheduleResultsAnnouncement(
+  hackathonId: string,
+  announcementAt: string
+) {
+  const response = await api.put(
+    `/organizer/hackathons/${hackathonId}/results-announcement`,
+    {
+      announcement_at: announcementAt,
+    }
+  );
+
+  return response.data;
+}
+
+export async function clearResultsAnnouncement(
+  hackathonId: string
+) {
+  const response = await api.delete(
+    `/organizer/hackathons/${hackathonId}/results-announcement`
+  );
+
+  return response.data;
+}

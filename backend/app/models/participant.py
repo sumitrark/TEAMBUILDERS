@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String, Integer, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -43,8 +43,39 @@ class Participant(Base):
     )
 
     joined_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+        # -------------------------
+    # Workspace presence
+    # -------------------------
+    # Updated by the authenticated participant while the workspace
+    # is open. This is only used for teammate presence, not
+    # proctoring/camera information.
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # -------------------------
+    # Proctoring
+    # -------------------------
+    # Strikes accumulate from automated "face not detected" events
+    # during a live session. Reaching the threshold flags the
+    # participant for a HUMAN organizer to review and decide on -
+    # it never triggers automatic removal. The heuristic behind
+    # this (face visibility) is not reliable enough to justify
+    # unsupervised punitive action.
+    proctoring_strikes: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    flagged_for_review: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
         nullable=False,
     )
 

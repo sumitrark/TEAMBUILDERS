@@ -17,6 +17,7 @@ import {
   HelpCircle,
   LogOut,
   Mail,
+  CreditCard,
 } from "lucide-react";
 
 import { logout, getCurrentUser } from "@/services/auth";
@@ -69,6 +70,11 @@ const menu = [
     title: "Settings",
     href: "/dashboard/settings",
     icon: Settings,
+  },
+  {
+    title: "Billing",
+    href: "/dashboard/billing",
+    icon: CreditCard,
   },
   {
   title: "AI Matchmaker",

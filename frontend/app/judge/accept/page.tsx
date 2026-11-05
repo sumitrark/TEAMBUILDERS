@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -46,23 +47,15 @@ export default function JudgeAcceptPage() {
         router.push("/dashboard");
       }, 1500);
     } catch (error: any) {
-  console.log(
-    "INVITE ERROR STATUS:",
-    error?.response?.status
-  );
+      console.error(
+        "Failed to accept invitation:",
+        error
+      );
 
-  console.log(
-    "INVITE ERROR DATA:",
-    error?.response?.data
-  );
-
-  alert(
-    JSON.stringify(
-      error?.response?.data,
-      null,
-      2
-    )
-  );
+      setError(
+        error?.response?.data?.detail ||
+          "Failed to accept invitation. Please check the code and try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -70,9 +63,23 @@ export default function JudgeAcceptPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50 px-6 py-12">
-      <div className="mx-auto flex min-h-[80vh] max-w-lg items-center justify-center">
+      <div className="mx-auto flex min-h-[80vh] max-w-lg flex-col items-center justify-center gap-6">
+
+        {/* Pointer to the unified invitations page for email invitations */}
+        <div className="w-full rounded-2xl border border-violet-200 bg-violet-50 p-5 text-center">
+          <p className="text-sm text-violet-700">
+            Were you invited to judge by email?{" "}
+            <Link
+              href="/dashboard/invitations"
+              className="font-semibold underline hover:text-violet-900"
+            >
+              View your invitations
+            </Link>
+          </p>
+        </div>
+
         <div className="w-full rounded-3xl border border-gray-200 bg-white p-8 shadow-xl">
-          
+
           {/* Header */}
           <div className="mb-8 text-center">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-100 text-3xl">
@@ -84,9 +91,8 @@ export default function JudgeAcceptPage() {
             </h1>
 
             <p className="mt-3 text-sm leading-6 text-gray-500">
-              You have been invited to become a judge.
-              Enter the secure invitation code provided
-              by the hackathon organizer.
+              If a hackathon organizer gave you an invitation code
+              directly, enter it below.
             </p>
           </div>
 
@@ -132,7 +138,7 @@ export default function JudgeAcceptPage() {
             {/* Success */}
             {message && (
               <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-                <span className="text-base">✓</span>
+                <span className="text-base">✅</span>
 
                 <p>{message}</p>
               </div>

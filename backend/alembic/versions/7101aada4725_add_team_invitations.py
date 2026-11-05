@@ -40,3 +40,4 @@ def downgrade() -> None:
     sa.UniqueConstraint('team_id', 'hackathon_id', name=op.f('uq_team_hackathon'), postgresql_include=[], postgresql_nulls_not_distinct=False)
     )
     # ### end Alembic commands ###
+

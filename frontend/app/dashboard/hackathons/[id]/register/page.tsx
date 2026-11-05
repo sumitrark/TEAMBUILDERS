@@ -1,500 +1,265 @@
+
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+  Sparkles,
   Users,
-  Trophy,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  CalendarDays,
 } from "lucide-react";
+import { login } from "@/services/auth";
 
-import { api } from "@/lib/api";
-import { getMyTeams } from "@/services/team";
-
-interface Hackathon {
-  id: string;
-  title: string;
-  organizer: string;
-  team_size: number;
-  registration_deadline: string;
-  start_date: string;
-  end_date: string;
-  status: string;
-}
-
-interface Team {
-  id: string;
-  name: string;
-  description: string | null;
-  max_members: number;
-  owner_id: string;
-  hackathon_id?: string | null;
-  created_at: string;
-}
-
-function formatDate(date: string) {
-  if (!date) return "N/A";
-
-  return new Date(date).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-export default function TeamRegistrationPage() {
-  const params = useParams();
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect");
 
-  const hackathonId = params.id as string;
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+  });
 
-  const [hackathon, setHackathon] =
-    useState<Hackathon | null>(null);
-
-  const [teams, setTeams] = useState<Team[]>([]);
-
-  const [selectedTeam, setSelectedTeam] =
-    useState<string | null>(null);
-
-  const [loading, setLoading] = useState(true);
-  const [registering, setRegistering] = useState(false);
-
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
-  /* -------------------------------- */
-  /* Load hackathon + teams           */
-  /* -------------------------------- */
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
+    setError("");
+  };
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const [hackathonResponse, teamsResponse] =
-          await Promise.all([
-            api.get(`/hackathons/${hackathonId}`),
-            getMyTeams(),
-          ]);
-
-        setHackathon(hackathonResponse.data);
-
-        setTeams(
-          Array.isArray(teamsResponse)
-            ? teamsResponse
-            : []
-        );
-
-      } catch (err: any) {
-        console.error(
-          "Failed to load registration data:",
-          err
-        );
-
-        setError(
-          err?.response?.data?.detail ||
-            "Unable to load registration information."
-        );
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    if (hackathonId) {
-      loadData();
-    }
-  }, [hackathonId]);
-
-  /* -------------------------------- */
-  /* Register selected team           */
-  /* -------------------------------- */
-
-  async function handleRegister() {
-    if (!selectedTeam) {
-      setError("Please select a team first.");
-      return;
-    }
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
 
     try {
-      setRegistering(true);
+      setLoading(true);
       setError("");
-      setSuccess("");
 
-      await api.post(
-        `/teams/${selectedTeam}/register/${hackathonId}`
-      );
+      const data = await login(form);
+      const role = data.user?.role?.toLowerCase();
 
-      setSuccess(
-        "Your team has been successfully registered!"
-      );
+      if (redirectTo) {
+        router.push(redirectTo);
+        return;
+      }
 
-      setTeams((current) =>
-        current.map((team) =>
-          team.id === selectedTeam
-            ? {
-                ...team,
-                hackathon_id: hackathonId,
-              }
-            : team
-        )
-      );
+      if (role === "organizer") {
+        router.push("/organizer");
+        return;
+      }
 
+      if (role === "judge") {
+        router.push("/judge");
+        return;
+      }
+
+      router.push("/dashboard");
     } catch (err: any) {
-      console.error(
-        "Team registration failed:",
-        err
-      );
-
-      const detail =
-        err?.response?.data?.detail;
-
+      console.error("Login failed:", err);
       setError(
-        detail ||
-          "Unable to register your team."
+        err?.response?.data?.detail || "Invalid email or password."
       );
     } finally {
-      setRegistering(false);
+      setLoading(false);
     }
-  }
-
-  /* -------------------------------- */
-  /* Loading state                    */
-  /* -------------------------------- */
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[500px] items-center justify-center">
-        <div className="flex items-center gap-3 text-slate-500">
-          <Loader2
-            size={24}
-            className="animate-spin"
-          />
-
-          Loading registration...
-        </div>
-      </div>
-    );
-  }
-
-  /* -------------------------------- */
-  /* Error / not found                */
-  /* -------------------------------- */
-
-  if (!hackathon) {
-    return (
-      <div className="space-y-6">
-
-        <Link
-          href="/dashboard/hackathons"
-          className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-violet-600"
-        >
-          <ArrowLeft size={18} />
-          Back to Hackathons
-        </Link>
-
-        <div className="rounded-2xl border bg-white p-10 text-center">
-
-          <Trophy
-            size={45}
-            className="mx-auto text-slate-300"
-          />
-
-          <h2 className="mt-4 text-xl font-bold">
-            Hackathon not found
-          </h2>
-
-        </div>
-
-      </div>
-    );
-  }
+  };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
+    <main className="min-h-screen bg-slate-950 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl overflow-hidden rounded-[2rem] bg-white shadow-2xl lg:grid-cols-[1.05fr_0.95fr]">
 
-      {/* Back */}
-      <Link
-        href={`/dashboard/hackathons/${hackathonId}`}
-        className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-violet-600"
-      >
-        <ArrowLeft size={18} />
-        Back to Hackathon
-      </Link>
+        {/* Brand panel */}
+        <section className="relative hidden overflow-hidden bg-gradient-to-br from-violet-700 via-indigo-700 to-slate-950 p-10 text-white lg:flex lg:flex-col lg:justify-between">
+          <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-fuchsia-400/20 blur-3xl" />
+          <div className="absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-cyan-400/20 blur-3xl" />
 
-      {/* Header */}
-      <div>
-
-        <p className="font-semibold text-violet-600">
-          Team Registration
-        </p>
-
-        <h1 className="mt-1 text-4xl font-bold text-slate-900">
-          Register Your Team
-        </h1>
-
-        <p className="mt-2 text-slate-500">
-          Select the team you want to register for this
-          hackathon.
-        </p>
-
-      </div>
-
-      {/* Hackathon summary */}
-      <div className="rounded-3xl bg-gradient-to-r from-violet-700 to-indigo-700 p-7 text-white shadow-lg">
-
-        <div className="flex items-start gap-4">
-
-          <div className="rounded-xl bg-white/15 p-3">
-            <Trophy size={28} />
-          </div>
-
-          <div>
-
-            <h2 className="text-2xl font-bold">
-              {hackathon.title}
-            </h2>
-
-            <p className="mt-1 text-white/80">
-              Organized by {hackathon.organizer}
-            </p>
-
-            <div className="mt-4 flex flex-wrap gap-5 text-sm text-white/90">
-
-              <span className="flex items-center gap-2">
-                <Users size={16} />
-                Up to {hackathon.team_size} members
-              </span>
-
-              <span className="flex items-center gap-2">
-                <CalendarDays size={16} />
-                {formatDate(hackathon.start_date)}
-                {" - "}
-                {formatDate(hackathon.end_date)}
-              </span>
-
+          <div className="relative">
+            <div className="mb-12 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-bold tracking-[0.25em]">
+                  TEAMBUILDERS
+                </p>
+                <p className="text-xs text-white/60">Hackathon Platform</p>
+              </div>
             </div>
 
+            <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-violet-200">
+              Build. Collaborate. Compete.
+            </p>
+
+            <h1 className="max-w-xl text-5xl font-black leading-[1.05]">
+              Turn your ideas into something worth showcasing.
+            </h1>
+
+            <p className="mt-6 max-w-lg text-base leading-7 text-white/70">
+              Join hackathons, build with your team, submit projects,
+              collaborate with creators and take your ideas from concept
+              to working solution.
+            </p>
           </div>
 
-        </div>
-
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
-
-          <AlertCircle size={20} />
-
-          <p>{error}</p>
-
-        </div>
-      )}
-
-      {/* Success */}
-      {success && (
-        <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-700">
-
-          <CheckCircle2 size={22} />
-
-          <div>
-
-            <p className="font-semibold">
-              Registration successful!
-            </p>
-
-            <p className="mt-1 text-sm">
-              Your team is now registered for this
-              hackathon.
-            </p>
-
+          <div className="relative grid grid-cols-3 gap-3">
+            <BrandStat icon={<Users />} label="Teams" />
+            <BrandStat icon={<Sparkles />} label="Projects" />
+            <BrandStat icon={<ShieldCheck />} label="Secure" />
           </div>
+        </section>
 
-        </div>
-      )}
+        {/* Login panel */}
+        <section className="flex items-center justify-center bg-white p-6 sm:p-10 lg:p-14">
+          <div className="w-full max-w-md">
 
-      {/* Team Selection */}
-      <section>
+            <div className="mb-8 lg:hidden">
+              <div className="inline-flex items-center gap-2 rounded-2xl bg-violet-50 px-4 py-2 text-sm font-bold text-violet-700">
+                <Sparkles className="h-4 w-4" />
+                TEAMBUILDERS
+              </div>
+            </div>
 
-        <div className="mb-5">
+            <div className="mb-8">
+              <p className="mb-2 text-sm font-bold uppercase tracking-[0.18em] text-violet-600">
+                Welcome back
+              </p>
+              <h2 className="text-3xl font-black tracking-tight text-slate-900">
+                Sign in to your account
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Continue building, collaborating and participating in
+                your hackathons.
+              </p>
+            </div>
 
-          <h2 className="text-2xl font-bold text-slate-900">
-            Select Your Team
-          </h2>
+            {error && (
+              <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                {error}
+              </div>
+            )}
 
-          <p className="mt-1 text-sm text-slate-500">
-            Choose one of your teams to participate.
-          </p>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Email address
+                </label>
 
-        </div>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    required
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pl-12 pr-4 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-100"
+                  />
+                </div>
+              </div>
 
-        {teams.length === 0 ? (
-          <div className="rounded-2xl border border-dashed bg-white p-10 text-center">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Password
+                </label>
 
-            <Users
-              size={45}
-              className="mx-auto text-slate-300"
-            />
+                <div className="relative">
+                  <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
 
-            <h3 className="mt-4 text-lg font-bold">
-              You don't have any teams yet
-            </h3>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    value={form.password}
+                    onChange={handleChange}
+                    required
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pl-12 pr-12 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-100"
+                  />
 
-            <p className="mt-2 text-sm text-slate-500">
-              Create a team before registering for
-              this hackathon.
-            </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((value) => !value)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5" />
+                    ) : (
+                      <Eye className="h-5 w-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-violet-200 transition hover:from-violet-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? "Signing in..." : "Sign in"}
+                {!loading && <ArrowRight className="h-4 w-4" />}
+              </button>
+            </form>
+
+            <div className="my-7 flex items-center gap-3">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-xs font-medium text-slate-400">
+                NEW TO TEAMBUILDERS?
+              </span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
 
             <Link
-              href="/dashboard/teams"
-              className="mt-5 inline-flex rounded-xl bg-violet-600 px-6 py-3 font-semibold text-white hover:bg-violet-700"
+              href="/register"
+              className="flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white py-3.5 text-sm font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
             >
-              Create a Team
+              Create an account
             </Link>
 
+            <p className="mt-6 text-center text-xs leading-5 text-slate-400">
+              By continuing, you agree to use TEAMBUILDERS responsibly
+              and follow the rules of each hackathon.
+            </p>
           </div>
-        ) : (
-          <div className="grid gap-5 md:grid-cols-2">
+        </section>
+      </div>
+    </main>
+  );
+}
 
-            {teams.map((team) => {
-
-              const selected =
-                selectedTeam === team.id;
-
-              const alreadyRegistered =
-                team.hackathon_id === hackathonId;
-
-              return (
-                <button
-                  key={team.id}
-                  type="button"
-                  disabled={alreadyRegistered}
-                  onClick={() =>
-                    setSelectedTeam(team.id)
-                  }
-                  className={`rounded-2xl border-2 bg-white p-6 text-left transition ${
-                    selected
-                      ? "border-violet-600 bg-violet-50 shadow-lg"
-                      : "border-slate-200 hover:border-violet-300 hover:shadow-md"
-                  } ${
-                    alreadyRegistered
-                      ? "cursor-not-allowed opacity-60"
-                      : ""
-                  }`}
-                >
-
-                  <div className="flex items-start justify-between">
-
-                    <div className="flex items-center gap-4">
-
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-100 text-lg font-bold text-violet-700">
-                        {team.name
-                          .charAt(0)
-                          .toUpperCase()}
-                      </div>
-
-                      <div>
-
-                        <h3 className="text-lg font-bold text-slate-900">
-                          {team.name}
-                        </h3>
-
-                        <p className="text-sm text-slate-500">
-                          Maximum {team.max_members} members
-                        </p>
-
-                      </div>
-
-                    </div>
-
-                    {selected && (
-                      <CheckCircle2
-                        size={24}
-                        className="text-violet-600"
-                      />
-                    )}
-
-                  </div>
-
-                  {team.description && (
-                    <p className="mt-4 text-sm leading-6 text-slate-500">
-                      {team.description}
-                    </p>
-                  )}
-
-                  {alreadyRegistered && (
-                    <div className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
-                      Already registered for this hackathon
-                    </div>
-                  )}
-
-                </button>
-              );
-            })}
-
-          </div>
-        )}
-
-      </section>
-
-      {/* Register action */}
-      {teams.length > 0 && (
-        <div className="sticky bottom-4 rounded-2xl border bg-white/95 p-5 shadow-xl backdrop-blur">
-
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-            <div>
-
-              <p className="font-semibold text-slate-900">
-                {selectedTeam
-                  ? "Team selected"
-                  : "Select a team to continue"}
-              </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Your team will be registered for{" "}
-                {hackathon.title}.
-              </p>
-
-            </div>
-
-            <button
-              type="button"
-              disabled={
-                !selectedTeam ||
-                registering ||
-                Boolean(success)
-              }
-              onClick={handleRegister}
-              className="flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-7 py-3.5 font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-
-              {registering && (
-                <Loader2
-                  size={18}
-                  className="animate-spin"
-                />
-              )}
-
-              {registering
-                ? "Registering..."
-                : success
-                  ? "Registered"
-                  : "Register My Team"}
-
-            </button>
-
-          </div>
-
-        </div>
-      )}
-
+function BrandStat({
+  icon,
+  label,
+}: {
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
+      <div className="mb-3 text-violet-200">
+        {icon}
+      </div>
+      <p className="text-sm font-semibold">{label}</p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

@@ -32,9 +32,14 @@ class UserRegister(BaseModel):
     # Allowed:
     # student
     # organizer
+    # judge (only with a valid invitation_token)
     role: str = Field(
         default="student",
     )
+
+    # Required when role == "judge" - links registration to a
+    # specific pending JudgeInvitation.
+    invitation_token: str | None = None
 
     # -----------------------------------------------------
     # PARTICIPANT INFORMATION
@@ -99,12 +104,13 @@ class UserRegister(BaseModel):
         allowed_roles = {
             "student",
             "organizer",
+            "judge",
         }
 
         if self.role not in allowed_roles:
             raise ValueError(
                 "Registration is allowed only for "
-                "student or organizer"
+                "student, organizer, or an invited judge"
             )
 
         # -------------------------------------------------
@@ -142,6 +148,24 @@ class UserRegister(BaseModel):
             if not self.designation:
                 raise ValueError(
                     "Designation is required for organizers"
+                )
+
+        # -------------------------------------------------
+        # JUDGE VALIDATION
+        #
+        # Judge registration is never publicly open on its own -
+        # it requires a token from a specific JudgeInvitation.
+        # The token/email/expiry itself is verified against the
+        # database in auth_service.register_user(), since a
+        # Pydantic schema has no DB access; this only enforces
+        # that a token was supplied at all.
+        # -------------------------------------------------
+
+        if self.role == "judge":
+
+            if not self.invitation_token:
+                raise ValueError(
+                    "Judge registration requires a valid invitation link"
                 )
 
         return self
@@ -274,6 +298,11 @@ class UserResponse(BaseModel):
 
     is_active: bool
 
+    # Phone verification
+    mobile_number: str | None = None
+
+    phone_verified: bool = False
+
     # Profile
     bio: str | None = None
 
@@ -308,3 +337,13 @@ class LoginResponse(BaseModel):
     user: UserResponse
 
     tokens: TokenResponse
+
+
+class RefreshRequest(BaseModel):
+
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+
+    refresh_token: str

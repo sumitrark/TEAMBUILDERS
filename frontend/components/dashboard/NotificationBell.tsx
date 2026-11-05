@@ -12,10 +12,19 @@ import {
   Bell,
   Check,
   CheckCheck,
+  Gavel,
   Mail,
   Trophy,
   Users,
   X,
+  Rocket,
+  Clock,
+  CheckCircle2,
+  Lock,
+  ClipboardCheck,
+  Award,
+  FileBadge,
+  Camera,
 } from "lucide-react";
 
 import {
@@ -43,6 +52,40 @@ function getNotificationIcon(type: string) {
 
     case "team":
       return <Users size={18} />;
+
+    case "judge_invitation":
+      return <Gavel size={18} />;
+
+    case "judge_invitation_accepted":
+      return <Check size={18} />;
+
+    case "judge_invitation_declined":
+      return <X size={18} />;
+
+    case "HACKATHON_STARTED":
+      return <Rocket size={18} />;
+
+    case "TIME_REMAINING":
+      return <Clock size={18} />;
+
+    case "SUBMISSION_SUCCESS":
+      return <CheckCircle2 size={18} />;
+
+    case "SUBMISSION_CLOSED":
+      return <Lock size={18} />;
+
+    case "EVALUATION_UPDATE":
+      return <ClipboardCheck size={18} />;
+
+    case "RESULT_PUBLISHED":
+      return <Award size={18} />;
+
+    case "CERTIFICATE_AVAILABLE":
+      return <FileBadge size={18} />;
+
+    case "PROCTORING_ALERT":
+    case "proctoring_flag":
+      return <Camera size={18} />;
 
     default:
       return <Bell size={18} />;

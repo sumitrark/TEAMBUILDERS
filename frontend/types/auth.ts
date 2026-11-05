@@ -12,6 +12,9 @@ export interface RegisterRequest {
 
   role: UserRole;
 
+  // Judge registration (only valid alongside a JudgeInvitation token)
+  invitation_token?: string;
+
   // Student fields
   college?: string;
   course?: string;
@@ -20,6 +23,8 @@ export interface RegisterRequest {
   // Organizer fields
   organization?: string;
   designation?: string;
+
+  // Shared optional profile fields (organizer + judge)
   bio?: string;
   linkedin_url?: string;
   portfolio_url?: string;
@@ -42,6 +47,9 @@ export interface User {
 
   role: UserRole;
   is_active: boolean;
+
+  mobile_number?: string | null;
+  phone_verified?: boolean;
 
   bio?: string | null;
   github_url?: string | null;

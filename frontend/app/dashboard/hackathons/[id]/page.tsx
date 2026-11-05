@@ -13,9 +13,11 @@ import {
   Users,
   Loader2,
   CheckCircle2,
+  FolderGit2,
 } from "lucide-react";
 
 import { api } from "@/lib/api";
+
 
 interface Hackathon {
   id: string;
@@ -372,6 +374,7 @@ export default function HackathonDetailsPage() {
 
           </section>
 
+          
         </div>
 
         {/* Right */}
@@ -403,17 +406,33 @@ export default function HackathonDetailsPage() {
 
             </div>
 
-            <div className="mt-6">
+            <div className="mt-6 space-y-3">
 
-              <Link
-                href={`/dashboard/hackathons/${hackathon.id}/register`}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-3.5 font-semibold text-white transition hover:bg-violet-700"
-              >
-                <CheckCircle2 size={19} />
-                Register My Team
-              </Link>
+  <Link
+    href={`/dashboard/hackathons/${hackathon.id}/workspace`}
+    className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-3.5 font-semibold text-white transition hover:bg-violet-700"
+  >
+    <FolderGit2 size={19} />
+    Open Workspace
+  </Link>
 
-            </div>
+  <Link
+    href={`/dashboard/hackathons/${hackathon.id}/register`}
+    className="flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-5 py-3.5 font-semibold text-violet-700 transition hover:bg-violet-100"
+  >
+    <CheckCircle2 size={19} />
+    Register My Team
+  </Link>
+
+  <Link
+    href={`/dashboard/hackathons/${hackathon.id}/results`}
+    className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3.5 font-semibold text-slate-700 transition hover:bg-gray-50"
+  >
+    <Trophy size={19} />
+    View Results
+  </Link>
+
+</div>
 
             {hackathon.website && (
               <a

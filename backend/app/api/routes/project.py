@@ -10,6 +10,10 @@ from app.schemas.project import (
     ProjectCreate,
     ProjectResponse,
 )
+from app.schemas.submission import (
+    SubmissionResponse,
+    ProjectStatusResponse,
+)
 
 from app.crud.project import (
     create_project,
@@ -17,6 +21,10 @@ from app.crud.project import (
     get_project,
     update_project,
     delete_project,
+)
+from app.crud.submission import (
+    submit_project,
+    get_project_submission_status,
 )
 
 
@@ -119,6 +127,18 @@ async def edit_project(
             detail="Project not found or you are not the owner",
         )
 
+    if updated_project == "PROJECT_LOCKED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your project has already been submitted and is locked.",
+        )
+
+    if updated_project == "HACKATHON_FINISHED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This hackathon has ended. Projects can no longer be edited.",
+        )
+
     return updated_project
 
 
@@ -149,3 +169,101 @@ async def remove_project(
     return {
         "message": "Project deleted successfully"
     }
+
+
+# =========================================================
+# SUBMIT PROJECT
+#
+# Server-side deadline enforcement lives entirely in
+# crud.submission.submit_project() - the frontend countdown is a
+# convenience display only, never the authority.
+# =========================================================
+
+@router.post(
+    "/{project_id}/submit",
+    response_model=SubmissionResponse,
+)
+async def submit_project_route(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await submit_project(
+        db=db,
+        user_id=current_user.id,
+        project_id=project_id,
+    )
+
+    if result == "PROJECT_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    if result == "PROJECT_HAS_NO_TEAM":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This project has no team and cannot be submitted",
+        )
+
+    if result == "HACKATHON_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found",
+        )
+
+    if result == "NOT_AUTHORIZED":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to submit this project",
+        )
+
+    if result == "HACKATHON_NOT_STARTED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This hackathon has not started yet.",
+        )
+
+    if result == "SUBMISSION_WINDOW_CLOSED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Submission deadline has passed.",
+        )
+
+    if result == "PROJECT_LOCKED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your project has already been submitted and is locked.",
+        )
+
+    return result
+
+
+@router.get(
+    "/{project_id}/submission",
+    response_model=ProjectStatusResponse,
+)
+async def project_submission_status_route(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await get_project_submission_status(
+        db=db,
+        user_id=current_user.id,
+        project_id=project_id,
+    )
+
+    if result == "PROJECT_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    if result == "NOT_AUTHORIZED":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this project",
+        )
+
+    return result

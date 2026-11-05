@@ -18,6 +18,8 @@ export interface OrganizerHackathon {
   status: string;
   is_active?: boolean;
   judge_invitation_code?: string;
+  hackathon_start?: string | null;
+  hackathon_end?: string | null;
 }
 
 export type Hackathon = OrganizerHackathon;
@@ -225,6 +227,51 @@ export async function removeJudge(
   return response.data;
 }
 
+export interface JudgeInvitation {
+  id: string;
+  hackathon_id: string;
+  invited_email: string;
+  invited_user_id: string | null;
+  status: string;
+  expires_at: string;
+  accepted_at: string | null;
+  declined_at: string | null;
+  created_at: string;
+  dev_invitation_link: string | null;
+}
+
+export async function getJudgeInvitations(
+  hackathonId: string
+): Promise<JudgeInvitation[]> {
+  const response = await api.get<JudgeInvitation[]>(
+    `/organizer/hackathons/${hackathonId}/judges/invitations`
+  );
+
+  return response.data;
+}
+
+export async function resendJudgeInvitation(
+  hackathonId: string,
+  invitationId: string
+): Promise<JudgeInvitation> {
+  const response = await api.post<JudgeInvitation>(
+    `/organizer/hackathons/${hackathonId}/judges/invitations/${invitationId}/resend`
+  );
+
+  return response.data;
+}
+
+export async function cancelJudgeInvitation(
+  hackathonId: string,
+  invitationId: string
+) {
+  const response = await api.delete(
+    `/organizer/hackathons/${hackathonId}/judges/invitations/${invitationId}`
+  );
+
+  return response.data;
+}
+
 // ============================================================
 // ANALYTICS
 // ============================================================
@@ -242,7 +289,6 @@ export async function getHackathonAnalytics(
 // ============================================================
 // CREATE
 // ============================================================
-
 export async function createOrganizerHackathon(data: {
   title: string;
   description: string;
@@ -254,6 +300,8 @@ export async function createOrganizerHackathon(data: {
   registration_deadline: string;
   start_date: string;
   end_date: string;
+  hackathon_start: string;
+  hackathon_end: string;
   banner_image?: string;
   website?: string;
 }) {
@@ -300,6 +348,87 @@ export async function getOrganizerProject(
 ): Promise<OrganizerProject> {
   const response = await api.get<OrganizerProject>(
     `/organizer/hackathons/${hackathonId}/projects/${projectId}`
+  );
+
+  return response.data;
+}
+/* ============================================================
+   EVALUATION CRITERIA
+   ============================================================ */
+
+export interface EvaluationCriterion {
+  id: string;
+  hackathon_id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  max_score: number;
+  weight: number;
+  display_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluationCriterionCreate {
+  key: string;
+  name: string;
+  description?: string;
+  max_score: number;
+  weight: number;
+  display_order?: number;
+  is_active?: boolean;
+}
+
+export interface EvaluationCriterionUpdate {
+  key?: string;
+  name?: string;
+  description?: string | null;
+  max_score?: number;
+  weight?: number;
+  display_order?: number;
+  is_active?: boolean;
+}
+
+export async function getEvaluationCriteria(
+  hackathonId: string
+): Promise<EvaluationCriterion[]> {
+  const response = await api.get<EvaluationCriterion[]>(
+    `/organizer/hackathons/${hackathonId}/criteria`
+  );
+
+  return response.data;
+}
+
+export async function createEvaluationCriterion(
+  hackathonId: string,
+  data: EvaluationCriterionCreate
+): Promise<EvaluationCriterion> {
+  const response = await api.post<EvaluationCriterion>(
+    `/organizer/hackathons/${hackathonId}/criteria`,
+    data
+  );
+
+  return response.data;
+}
+
+export async function updateEvaluationCriterion(
+  criterionId: string,
+  data: EvaluationCriterionUpdate
+): Promise<EvaluationCriterion> {
+  const response = await api.patch<EvaluationCriterion>(
+    `/organizer/hackathons/criteria/${criterionId}`,
+    data
+  );
+
+  return response.data;
+}
+
+export async function deleteEvaluationCriterion(
+  criterionId: string
+): Promise<EvaluationCriterion> {
+  const response = await api.delete<EvaluationCriterion>(
+    `/organizer/hackathons/criteria/${criterionId}`
   );
 
   return response.data;

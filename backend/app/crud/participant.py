@@ -61,6 +61,24 @@ async def join_hackathon(
         return "HACKATHON_NOT_FOUND"
 
     # =====================================================
+    # 1b. Enforce registration window server-side - never trust
+    #     that the frontend only shows the button when appropriate.
+    # =====================================================
+
+    from app.services.hackathon_lifecycle import get_hackathon_status
+
+    lifecycle_status = get_hackathon_status(hackathon)
+
+    if lifecycle_status != "REGISTRATION_OPEN":
+        if lifecycle_status in ("DRAFT", "UPCOMING"):
+            return "REGISTRATION_NOT_OPEN"
+        if lifecycle_status == "REGISTRATION_CLOSED":
+            return "REGISTRATION_CLOSED"
+        if lifecycle_status == "LIVE":
+            return "HACKATHON_ALREADY_STARTED"
+        return "REGISTRATION_CLOSED"
+
+    # =====================================================
     # 2. Check if already registered
     # =====================================================
 
@@ -170,5 +188,8 @@ async def join_hackathon(
     await db.commit()
 
     await db.refresh(participant)
+
+    # Award the "FIRST_HACKATHON" achievement
+    await award_achievement(db, user_id, "FIRST_HACKATHON")
 
     return participant

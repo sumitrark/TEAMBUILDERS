@@ -13,6 +13,13 @@ from app.models.user import User
 from app.models.hackathon import Hackathon
 from app.models.participant import Participant
 from app.models.team import Team
+from app.models.refresh_token import RefreshToken
+from app.models.otp_verification import OtpVerification
+from app.models.ai_evaluation import AiEvaluation
+from app.models.payment_transaction import PaymentTransaction
+from app.models.judge_invitation import JudgeInvitation
+from app.models.proctoring_event import ProctoringEvent
+from app.models.submission import Submission
 
 
 config = context.config

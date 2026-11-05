@@ -1,5 +1,7 @@
 "use client";
 
+
+import FaceReferencePhoto from "@/components/dashboard/FaceReferencePhoto";
 import { FormEvent, useEffect, useState } from "react";
 import {
   getProfile,
@@ -285,7 +287,7 @@ export default function ProfilePage() {
             <h2 className="text-xl font-semibold text-gray-900">
               About Me
             </h2>
-
+            <FaceReferencePhoto />
             <p className="mt-4 leading-7 text-gray-600">
               {profile.bio || "No bio added yet."}
             </p>

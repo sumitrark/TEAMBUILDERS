@@ -162,9 +162,10 @@ async def get_single_team(
     current_user=Depends(get_current_user),
 ):
     team = await get_team(
-        db,
-        team_id,
-    )
+    db,
+    team_id,
+    current_user.id,
+)
 
     if team is None:
         raise HTTPException(

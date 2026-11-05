@@ -8,6 +8,7 @@ import {
   UsersRound,
   Gavel,
   BarChart3,
+  ShieldAlert,
   Settings,
   LogOut,
   ChevronLeft,
@@ -61,6 +62,11 @@ export default function OrganizerSidebar() {
           label: "Judges",
           href: `/organizer/hackathons/${hackathonId}/judges`,
           icon: Gavel,
+        },
+        {
+          label: "Proctoring",
+          href: `/organizer/hackathons/${hackathonId}/proctoring`,
+          icon: ShieldAlert,
         },
         {
           label: "Analytics",

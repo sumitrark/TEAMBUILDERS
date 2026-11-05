@@ -7,6 +7,7 @@ export interface ProjectPayload {
   github_url?: string;
   demo_url?: string;
   team_id?: string | null;
+  ai_tools_used?: string;
 }
 
 export interface Project {
@@ -18,6 +19,7 @@ export interface Project {
   demo_url: string | null;
   owner_id: string;
   team_id: string | null;
+  ai_tools_used: string | null;
   created_at: string;
 }
 
@@ -74,5 +76,41 @@ export async function deleteProject(
     `/projects/${projectId}`
   );
 
+  return res.data;
+}
+
+export interface SubmissionInfo {
+  id: string;
+  version_number: number;
+  submitted_at: string;
+  status: string;
+}
+
+export interface ProjectSubmissionStatus {
+  project_id: string;
+  status: string;
+  latest_submission: SubmissionInfo | null;
+  submission_count: number;
+  can_edit: boolean;
+  can_submit: boolean;
+}
+
+export async function submitProject(
+  hackathonId: string,
+  projectId: string
+): Promise<SubmissionInfo> {
+  // The backend route is POST /projects/{projectId}/submit
+  // hackathonId is not needed in the URL (the backend derives
+  // the hackathon from the project's team_id).
+  const res = await api.post(
+    `/projects/${projectId}/submit`
+  );
+  return res.data;
+}
+
+export async function getSubmissionStatus(
+  projectId: string
+): Promise<ProjectSubmissionStatus> {
+  const res = await api.get(`/projects/${projectId}/submission`);
   return res.data;
 }

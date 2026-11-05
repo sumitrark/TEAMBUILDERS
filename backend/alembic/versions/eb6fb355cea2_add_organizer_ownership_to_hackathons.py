@@ -34,3 +34,4 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_hackathons_organizer_id'), table_name='hackathons')
     op.drop_column('hackathons', 'organizer_id')
     # ### end Alembic commands ###
+

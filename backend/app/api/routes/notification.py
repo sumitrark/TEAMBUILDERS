@@ -1,15 +1,12 @@
+
 from uuid import UUID
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-)
-
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.dependencies.current_user import get_current_user
+from app.dependencies.organizer import get_current_organizer
 
 from app.crud.notification import (
     get_my_notifications,
@@ -51,9 +48,7 @@ async def unread_count(
         user_id=current_user.id,
     )
 
-    return {
-        "count": count,
-    }
+    return {"count": count}
 
 
 @router.post(
@@ -90,6 +85,24 @@ async def read_all_notifications(
         user_id=current_user.id,
     )
 
+    return {"message": "All notifications marked as read"}
+
+
+@router.post("/dispatch-reminders")
+async def dispatch_reminders(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_organizer),
+):
+    from app.services.notification_scheduler import (
+        dispatch_hackathon_reminders,
+        dispatch_scheduled_results,
+    )
+
+    reminder_counts = await dispatch_hackathon_reminders(db)
+    result_counts = await dispatch_scheduled_results(db)
+
     return {
-        "message": "All notifications marked as read"
+        "message": "Notifications dispatched",
+        "reminders": reminder_counts,
+        "results": result_counts,
     }

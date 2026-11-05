@@ -269,43 +269,112 @@ export default function MatchmakerPage() {
     );
   }
 
+  
   // =========================================================
   // ERROR
   // =========================================================
 
   if (error) {
+    const isAccessRestriction =
+      error ===
+      "The Matchmaker is available only for student accounts.";
+
+    const isSessionError =
+      error ===
+      "Your session has expired. Please login again.";
+
+    if (isAccessRestriction) {
+      return (
+        <main className="min-h-screen bg-slate-50 p-6">
+          <div className="mx-auto flex max-w-2xl items-center justify-center py-16">
+            <div className="w-full rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                <span className="text-3xl">🎓</span>
+              </div>
+
+              <div className="mt-5">
+                <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                  STUDENT FEATURE
+                </span>
+              </div>
+
+              <h2 className="mt-5 text-2xl font-bold tracking-tight text-slate-900">
+                AI Matchmaker
+              </h2>
+
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-600">
+                AI Matchmaker helps students discover potential
+                teammates based on skills, interests and preferred
+                roles.
+              </p>
+
+              <div className="mx-auto mt-6 max-w-md rounded-2xl bg-slate-50 p-4">
+                <p className="text-sm font-medium text-slate-700">
+                  This feature is currently available to student
+                  accounts.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard")}
+                className="mt-7 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+              >
+                Back to Dashboard
+              </button>
+
+            </div>
+          </div>
+        </main>
+      );
+    }
+
     return (
       <main className="min-h-screen bg-slate-50 p-6">
-        <div className="mx-auto max-w-2xl">
+        <div className="mx-auto flex max-w-2xl items-center justify-center py-16">
+          <div className="w-full rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
 
-          <div className="rounded-3xl border border-red-200 bg-red-50 p-8 text-center">
-
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-100 text-3xl">
-              ⚠️
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+              <span className="text-3xl">
+                {isSessionError ? "🔐" : "⚙️"}
+              </span>
             </div>
 
-            <h2 className="mt-5 text-xl font-bold text-red-800">
-              Unable to load Matchmaker
+            <h2 className="mt-5 text-xl font-bold text-slate-900">
+              {isSessionError
+                ? "Session Expired"
+                : "Unable to Load Matchmaker"}
             </h2>
 
-            <p className="mt-2 text-sm text-red-600">
+            <p className="mt-2 text-sm leading-6 text-slate-500">
               {error}
             </p>
 
-            <button
-              type="button"
-              onClick={loadRecommendations}
-              className="mt-6 rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-700"
-            >
-              Try Again
-            </button>
+            {isSessionError ? (
+              <button
+                type="button"
+                onClick={() => router.push("/login")}
+                className="mt-6 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
+              >
+                Login Again
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={loadRecommendations}
+                className="mt-6 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
+              >
+                Try Again
+              </button>
+            )}
 
           </div>
-
         </div>
       </main>
     );
   }
+
 
   return (
     <main className="min-h-screen bg-slate-50">

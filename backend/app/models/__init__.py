@@ -14,3 +14,18 @@ from app.models.help_center import HelpCenterConversation
 from app.models.achievement import Achievement
 from app.models.judge import Judge
 from app.models.evaluation import Evaluation
+from app.models.refresh_token import RefreshToken
+from app.models.otp_verification import OtpVerification
+from app.models.ai_evaluation import AiEvaluation
+from app.models.payment_transaction import PaymentTransaction
+from app.models.judge_invitation import JudgeInvitation
+from app.models.proctoring_event import ProctoringEvent
+from app.models.submission import Submission
+from app.models.evaluation_criterion import EvaluationCriterion
+
+from app.models.identity_verification import IdentityVerification
+from app.models.face_reference_photo import FaceReferencePhoto
+from app.models.face_reference_photo import FaceReferencePhoto
+from app.models.proctoring_session import ProctoringSession
+from app.models.judge_project_assignment import JudgeProjectAssignment
+from app.models.team_message import TeamMessage

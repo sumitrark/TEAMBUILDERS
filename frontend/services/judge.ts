@@ -7,9 +7,12 @@ export interface JudgeProject {
   tech_stack: string | null;
   github_url: string | null;
   demo_url: string | null;
-  owner_id: string;
   team_id: string | null;
-  team_name: string;
+  ai_tools_used: string | null;
+
+  // Anonymized identifier only - the real team name and any member
+  // identity are never sent to judges, to reduce evaluation bias.
+  team_display_id: string | null;
   created_at: string;
 }
 
@@ -24,6 +27,7 @@ export interface Evaluation {
   presentation_score: number;
   overall_score: number;
 
+  criterion_scores: Record<string, number> | null;
   feedback: string | null;
 
   created_at: string;
@@ -37,13 +41,61 @@ export interface EvaluationCreate {
   impact_score: number;
   presentation_score: number;
   overall_score: number;
+  criterion_scores?: Record<string, number>;
   feedback?: string;
+}
+
+export interface AiEvaluation {
+  id: string;
+  project_id: string;
+  ai_assisted: boolean;
+
+  innovation_score: number;
+  technical_score: number;
+  impact_score: number;
+  feasibility_score: number;
+  overall_score: number;
+
+  ui_ux_notes: string | null;
+
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+  potential_issues: string[];
+
+  model_name: string;
+
+  created_at: string;
+  updated_at: string;
 }
 
 
 // ============================================================
 // GET PROJECTS FOR JUDGE
 // ============================================================
+
+export interface MyJudgeHackathon {
+  hackathon_id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  total_projects: number;
+  evaluated_count: number;
+  pending_count: number;
+}
+
+export async function getMyJudgeHackathons(): Promise<MyJudgeHackathon[]> {
+  const response = await api.get<MyJudgeHackathon[]>(
+    "/judge/hackathons"
+  );
+
+  return response.data;
+}
+
+export async function getMyEvaluations(): Promise<Evaluation[]> {
+  const response = await api.get<Evaluation[]>("/evaluations/my");
+  return response.data;
+}
 
 export async function getJudgeProjects(
   hackathonId: string
@@ -123,6 +175,72 @@ export async function updateEvaluation(
   const response = await api.put(
     `/evaluations/${evaluationId}`,
     data
+  );
+
+  return response.data;
+}
+
+
+// ============================================================
+// GET AI EVALUATION (returns null if none has been generated yet)
+// ============================================================
+
+export async function getAiEvaluation(
+  projectId: string
+): Promise<AiEvaluation | null> {
+  try {
+    const response = await api.get(
+      `/evaluations/ai/${projectId}`
+    );
+
+    return response.data;
+  } catch (error: any) {
+
+    if (error?.response?.status === 404) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+
+// ============================================================
+// GENERATE (OR REGENERATE) AI EVALUATION
+// ============================================================
+
+export async function generateAiEvaluation(
+  projectId: string
+): Promise<AiEvaluation> {
+  const response = await api.post(
+    `/evaluations/ai/${projectId}`
+  );
+
+  return response.data;
+}
+
+
+// ============================================================
+// EVALUATION CRITERIA FOR A HACKATHON (judge-accessible)
+// ============================================================
+
+export interface EvaluationCriterion {
+  id: string;
+  hackathon_id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  max_score: number;
+  weight: number;
+  display_order: number;
+  is_active: boolean;
+}
+
+export async function getJudgeHackathonCriteria(
+  hackathonId: string
+): Promise<EvaluationCriterion[]> {
+  const response = await api.get<EvaluationCriterion[]>(
+    `/judge/hackathons/${hackathonId}/criteria`
   );
 
   return response.data;

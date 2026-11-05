@@ -11,6 +11,16 @@ from app.models.project import Project
 from app.models.participant import Participant
 from app.models.hackathon import Hackathon
 from app.models.team_hackathon import TeamHackathon
+import json
+import logging
+
+from app.services.ai_client import (
+    generate_text,
+    AIServiceNotConfiguredError,
+    AIServiceError,
+)
+
+logger = logging.getLogger("app.help_center")
 from app.services.achievement_service import award_achievement
 
 # =========================================================
@@ -555,6 +565,75 @@ def generate_help_response(
         "Try asking about something specific."
     )
 
+
+async def generate_help_response_with_ai(
+    question: str,
+    context: dict | None = None,
+) -> tuple[str, str]:
+
+    context = context or {}
+
+    # Preserve the existing response as a fallback.
+    fallback_category, fallback_answer = generate_help_response(
+        question=question,
+        context=context,
+    )
+
+    try:
+        system_prompt = """
+You are the TEAMBUILDERS AI Help Center assistant.
+
+Help users understand and use the TEAMBUILDERS platform.
+
+You can help with:
+- Teams and invitations
+- Hackathons and registrations
+- Projects and submissions
+- AI Matchmaker
+- Organiser and judge features
+- Notifications and profiles
+- AI Content Studio
+
+Instructions:
+1. Give clear and helpful answers.
+2. Use the user's supplied platform context.
+3. Provide step-by-step instructions when useful.
+4. Never invent user data.
+5. Never claim an action was completed unless it was.
+6. If information is unavailable, say so honestly.
+7. Keep answers relevant to TEAMBUILDERS.
+"""
+
+        user_prompt = f"""
+User question:
+{question}
+
+User platform context:
+{json.dumps(context, ensure_ascii=False, default=str)[:6000]}
+
+Answer the user's question helpfully.
+"""
+
+        answer = await generate_text(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=600,
+        )
+
+        return fallback_category, answer
+
+    except (AIServiceNotConfiguredError, AIServiceError) as exc:
+        logger.warning(
+            "Help Center AI unavailable. Using fallback: %s",
+            exc,
+        )
+
+    except Exception:
+        logger.exception(
+            "Unexpected Help Center AI error. Using fallback."
+        )
+
+    return fallback_category, fallback_answer
 
 # =========================================================
 # SAVE CONVERSATION

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from app.api.routes.team_chat import router as team_chat_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.participant import router as participant_router
 from app.core.config import settings
@@ -30,9 +31,11 @@ from app.api.routes.notification import (
 )
 from app.api.routes.user import router as user_router
 from app.api.routes.evaluation import router as evaluation_router
+from app.api.routes.evaluation_criterion import router as evaluation_criterion_router
 
 from app.api.routes.judge import router as judge_router
-print("✅ LOADED app/main.py WITH PARTICIPANT ROUTER")
+from app.api.routes.payments import router as payments_router
+from app.api.routes.proctoring import router as proctoring_router
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="1.0.0",
@@ -154,8 +157,23 @@ app.include_router(
     evaluation_router,
     prefix="/api/v1",
 )
+app.include_router(
+    evaluation_criterion_router,
+    prefix="/api/v1",
+)
 app.include_router(judge_router, prefix="/api/v1")
+app.include_router(payments_router, prefix="/api/v1")
+app.include_router(proctoring_router, prefix="/api/v1")
 
-for route in app.router.routes:
-    if hasattr(route, "path"):
-        print(route.path)
+
+
+from app.api.routes.identity_verification import router as identity_verification_router
+
+app.include_router(
+    identity_verification_router,
+    prefix="/api/v1",
+)
+
+
+
+app.include_router(team_chat_router, prefix="/api/v1")

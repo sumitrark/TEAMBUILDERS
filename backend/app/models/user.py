@@ -85,6 +85,42 @@ class User(Base, BaseModel):
     )
 
     # -------------------------
+    # Phone / OTP Verification
+    # -------------------------
+
+    mobile_number: Mapped[str | None] = mapped_column(
+        String(20),
+        unique=True,
+        nullable=True,
+    )
+
+    phone_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    # -------------------------
+    # Subscription / Billing
+    # -------------------------
+
+    subscription_plan: Mapped[str] = mapped_column(
+        String(30),
+        default="free",
+        nullable=False,
+    )
+
+    subscription_status: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+
+    stripe_customer_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    # -------------------------
     # Profile Information
     # -------------------------
 

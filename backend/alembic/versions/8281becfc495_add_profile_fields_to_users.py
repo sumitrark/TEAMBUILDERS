@@ -40,3 +40,4 @@ def downgrade() -> None:
     op.drop_column('users', 'github_url')
     op.drop_column('users', 'bio')
     # ### end Alembic commands ###
+
