@@ -1,7 +1,7 @@
 from uuid import UUID
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.team_member import TeamMember
@@ -53,17 +53,21 @@ async def get_my_teams(
     db: AsyncSession,
     owner_id: UUID,
 ):
+    is_member = exists().where(
+        TeamMember.team_id == Team.id,
+        TeamMember.user_id == owner_id,
+    )
     result = await db.execute(
         select(Team)
         .where(
-            Team.owner_id == owner_id
+            or_(Team.owner_id == owner_id, is_member)
         )
-        .order_by(
-            Team.created_at.desc()
-        )
+        .order_by(Team.created_at.desc())
     )
 
-    return result.scalars().all()
+    # EXISTS avoids a join that could return duplicate teams if historical
+    # duplicate membership rows are present.
+    return result.scalars().unique().all()
 
 
 # =========================================================
@@ -73,12 +77,16 @@ async def get_my_teams(
 async def get_team(
     db: AsyncSession,
     team_id: UUID,
-    owner_id: UUID,
+    user_id: UUID,
 ):
+    is_member = exists().where(
+        TeamMember.team_id == Team.id,
+        TeamMember.user_id == user_id,
+    )
     result = await db.execute(
         select(Team).where(
             Team.id == team_id,
-            Team.owner_id == owner_id,
+            or_(Team.owner_id == user_id, is_member),
         )
     )
 
