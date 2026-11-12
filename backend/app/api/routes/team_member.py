@@ -1,4 +1,3 @@
-
 from uuid import UUID
 
 from fastapi import (
@@ -7,6 +6,7 @@ from fastapi import (
     HTTPException,
     status,
 )
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,11 +18,11 @@ from app.crud.team_member import (
     add_team_member,
     remove_team_member,
 )
-from app.crud.team import get_team
-
 from app.models.team import Team
 
-from app.schemas.team_member import TeamMemberResponse
+from app.schemas.team_member import (
+    TeamMemberResponse,
+)
 
 
 router = APIRouter(
@@ -31,10 +31,19 @@ router = APIRouter(
 )
 
 
-# =========================================================
-# VIEW TEAM MEMBERS
-# Owner and accepted members can view the roster.
-# =========================================================
+async def _get_owned_team(
+    db: AsyncSession,
+    team_id: UUID,
+    user_id: UUID,
+):
+    result = await db.execute(
+        select(Team).where(
+            Team.id == team_id,
+            Team.owner_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
 
 @router.get(
     "/{team_id}",
@@ -45,28 +54,18 @@ async def team_members(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    team = await get_team(
-        db,
-        team_id,
-        current_user.id,
-    )
+    # get_team authorizes owners and accepted TeamMember records only.
+    from app.crud.team import get_team
 
+    team = await get_team(db, team_id, current_user.id)
     if team is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of this team",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Team not found or you are not a member",
         )
 
-    return await get_team_members(
-        db,
-        team_id,
-    )
+    return await get_team_members(db, team_id)
 
-
-# =========================================================
-# ADD MEMBER
-# Owner only.
-# =========================================================
 
 @router.post(
     "/{team_id}/{user_id}",
@@ -78,19 +77,10 @@ async def add_member(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Team).where(
-            Team.id == team_id,
-            Team.owner_id == current_user.id,
-        )
-    )
-
-    team = result.scalar_one_or_none()
-
-    if team is None:
+    if await _get_owned_team(db, team_id, current_user.id) is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the team owner can add members",
+            detail="You are not the owner of this team",
         )
 
     result = await add_team_member(
@@ -107,7 +97,7 @@ async def add_member(
 
     if result == "ALREADY_MEMBER":
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="User is already a team member",
         )
 
@@ -120,11 +110,6 @@ async def add_member(
     return result
 
 
-# =========================================================
-# REMOVE MEMBER
-# Owner only.
-# =========================================================
-
 @router.delete(
     "/{team_id}/{user_id}",
 )
@@ -134,19 +119,10 @@ async def remove_member(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Team).where(
-            Team.id == team_id,
-            Team.owner_id == current_user.id,
-        )
-    )
-
-    team = result.scalar_one_or_none()
-
-    if team is None:
+    if await _get_owned_team(db, team_id, current_user.id) is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the team owner can remove members",
+            detail="You are not the owner of this team",
         )
 
     removed = await remove_team_member(
@@ -162,5 +138,5 @@ async def remove_member(
         )
 
     return {
-        "message": "Team member removed successfully",
+        "message": "Team member removed successfully"
     }
