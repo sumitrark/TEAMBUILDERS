@@ -40,73 +40,67 @@ async def get_participant(
     return result.scalar_one_or_none()
 
 
+
+
 async def join_hackathon(
     db: AsyncSession,
     user_id: UUID,
     hackathon_id: UUID,
 ):
-    # =====================================================
-    # 1. Check requested hackathon exists
-    # =====================================================
+    from app.services.hackathon_lifecycle import (
+        get_hackathon_status,
+    )
 
+    # 1. Verify hackathon exists.
     result = await db.execute(
         select(Hackathon).where(
             Hackathon.id == hackathon_id,
         )
     )
-
     hackathon = result.scalar_one_or_none()
 
     if hackathon is None:
         return "HACKATHON_NOT_FOUND"
 
-    # =====================================================
-    # 1b. Enforce registration window server-side - never trust
-    #     that the frontend only shows the button when appropriate.
-    # =====================================================
+    # 2. Check whether individual participation is allowed.
+    participation_mode = (
+        getattr(hackathon, "participation_mode", None) or "both"
+    ).lower()
 
-    from app.services.hackathon_lifecycle import get_hackathon_status
+    if participation_mode not in ("individual", "both"):
+        return "INDIVIDUAL_PARTICIPATION_NOT_ALLOWED"
 
+    # 3. Verify registration window.
     lifecycle_status = get_hackathon_status(hackathon)
 
     if lifecycle_status != "REGISTRATION_OPEN":
         if lifecycle_status in ("DRAFT", "UPCOMING"):
             return "REGISTRATION_NOT_OPEN"
-        if lifecycle_status == "REGISTRATION_CLOSED":
-            return "REGISTRATION_CLOSED"
+
         if lifecycle_status == "LIVE":
             return "HACKATHON_ALREADY_STARTED"
+
         return "REGISTRATION_CLOSED"
 
-    # =====================================================
-    # 2. Check if already registered
-    # =====================================================
-
+    # 4. Check existing participation.
     existing = await get_participant(
         db,
         user_id,
         hackathon_id,
     )
 
-    if existing:
+    if existing is not None:
+        if existing.team_id is not None:
+            return "ALREADY_REGISTERED_WITH_TEAM"
+
         return "ALREADY_JOINED"
 
-    # =====================================================
-    # 3. Check schedule conflicts
-    #
-    # A student cannot participate in two hackathons
-    # whose dates overlap.
-    # =====================================================
-
+    # 5. Check schedule conflicts.
     result = await db.execute(
-        select(
-            Participant,
-            Hackathon,
-        )
+        select(Participant, Hackathon)
         .join(
             Hackathon,
-            Participant.hackathon_id
-            == Hackathon.id,
+            Participant.hackathon_id == Hackathon.id,
         )
         .where(
             Participant.user_id == user_id,
@@ -115,13 +109,8 @@ async def join_hackathon(
 
     existing_participations = result.all()
 
-    for (
-        existing_participant,
-        existing_hackathon,
-    ) in existing_participations:
+    for existing_participant, existing_hackathon in existing_participations:
 
-        # Ignore anything that isn't an active
-        # participation.
         if existing_participant.status not in (
             "Joined",
             "joined",
@@ -130,52 +119,40 @@ async def join_hackathon(
         ):
             continue
 
-        # Date overlap:
-        #
-        # Existing starts before new ends
-        # AND
-        # Existing ends after new starts
         if (
-            existing_hackathon.start_date
-            <= hackathon.end_date
-            and
-            existing_hackathon.end_date
-            >= hackathon.start_date
+            existing_hackathon.start_date is None
+            or existing_hackathon.end_date is None
+            or hackathon.start_date is None
+            or hackathon.end_date is None
         ):
+            continue
+
+        overlaps = (
+            existing_hackathon.start_date <= hackathon.end_date
+            and existing_hackathon.end_date >= hackathon.start_date
+        )
+
+        if overlaps:
             return {
                 "CONFLICT": {
                     "message": "Hackathon schedule conflict",
                     "existing_hackathon": {
-                        "id": str(
-                            existing_hackathon.id
-                        ),
+                        "id": str(existing_hackathon.id),
                         "title": existing_hackathon.title,
-                        "start_date": (
-                            existing_hackathon.start_date
-                        ),
-                        "end_date": (
-                            existing_hackathon.end_date
-                        ),
+                        "start_date": existing_hackathon.start_date,
+                        "end_date": existing_hackathon.end_date,
                     },
                     "requested_hackathon": {
-                        "id": str(
-                            hackathon.id
-                        ),
+                        "id": str(hackathon.id),
                         "title": hackathon.title,
-                        "start_date": (
-                            hackathon.start_date
-                        ),
-                        "end_date": (
-                            hackathon.end_date
-                        ),
+                        "start_date": hackathon.start_date,
+                        "end_date": hackathon.end_date,
                     },
                 }
             }
 
-    # =====================================================
-    # 4. Create registration
-    # =====================================================
-
+    # 6. Create an individual participant.
+    # Never create Team, TeamMember, or TeamHackathon here.
     participant = Participant(
         user_id=user_id,
         hackathon_id=hackathon_id,
@@ -185,11 +162,18 @@ async def join_hackathon(
 
     db.add(participant)
 
-    await db.commit()
+    try:
+        await db.commit()
+        await db.refresh(participant)
+    except Exception:
+        await db.rollback()
+        raise
 
-    await db.refresh(participant)
-
-    # Award the "FIRST_HACKATHON" achievement
-    await award_achievement(db, user_id, "FIRST_HACKATHON")
+    # 7. Award first-hackathon achievement.
+    await award_achievement(
+        db,
+        user_id,
+        "FIRST_HACKATHON",
+    )
 
     return participant

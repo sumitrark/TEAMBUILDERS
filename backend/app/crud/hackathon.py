@@ -2,7 +2,6 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.dependencies.organizer import get_current_organizer
 from app.models.hackathon import Hackathon
 from app.schemas.hackathon import (
     HackathonCreate,
@@ -15,14 +14,7 @@ async def create_hackathon(
     data: HackathonCreate,
     organizer_id: UUID,
 ):
-    hackathon_data = data.model_dump(
-        exclude={
-            "registration_deadline",
-            "start_date",
-            "end_date",
-        },
-        exclude_unset=True,
-    )
+    hackathon_data = data.model_dump(exclude_unset=True)
 
     hackathon = Hackathon(
         **hackathon_data,

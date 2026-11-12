@@ -41,7 +41,7 @@ export default function MatchmakerPage() {
   const [loadingTeams, setLoadingTeams] = useState(false);
 
   const [error, setError] = useState("");
-
+  const [studentOnly, setStudentOnly] = useState(false);
   const [selectedUser, setSelectedUser] =
     useState<MatchRecommendation | null>(null);
 
@@ -65,10 +65,9 @@ export default function MatchmakerPage() {
     try {
       setLoading(true);
       setError("");
+      setStudentOnly(false);
 
-      const data =
-        await getMatchmakerRecommendations(10);
-
+      const data = await getMatchmakerRecommendations(10);
       setRecommendations(data);
     } catch (err: any) {
       console.error(
@@ -81,10 +80,10 @@ export default function MatchmakerPage() {
           "Your session has expired. Please login again."
         );
       } else if (err?.response?.status === 403) {
-        setError(
-          "The Matchmaker is available only for student accounts."
-        );
-      } else {
+        setStudentOnly(true);
+        setRecommendations([]);
+        setError("");
+        }else {
         setError(
           err?.response?.data?.detail ||
             "Unable to load Matchmaker recommendations."
@@ -269,15 +268,12 @@ export default function MatchmakerPage() {
     );
   }
 
-  
   // =========================================================
   // ERROR
   // =========================================================
 
-  if (error) {
-    const isAccessRestriction =
-      error ===
-      "The Matchmaker is available only for student accounts.";
+  if (studentOnly || error) {
+    const isAccessRestriction = studentOnly;
 
     const isSessionError =
       error ===
@@ -311,8 +307,10 @@ export default function MatchmakerPage() {
 
               <div className="mx-auto mt-6 max-w-md rounded-2xl bg-slate-50 p-4">
                 <p className="text-sm font-medium text-slate-700">
-                  This feature is currently available to student
-                  accounts.
+                  AI Matchmaker is designed for students who are looking
+                  for teammates. Organizer and judge accounts can continue
+                  using their dashboard features; they do not need access
+                  to this student matching tool.
                 </p>
               </div>
 
@@ -374,7 +372,6 @@ export default function MatchmakerPage() {
       </main>
     );
   }
-
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -974,3 +971,4 @@ export default function MatchmakerPage() {
     </main>
   );
 }
+                    

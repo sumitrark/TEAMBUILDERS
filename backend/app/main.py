@@ -23,6 +23,9 @@ from app.api.routes.help_center import (
 from app.api.routes.matchmaker import (
     router as matchmaker_router,
 )
+from app.api.routes.team_matchmaker import (
+    router as team_matchmaker_router,
+)
 from app.api.routes.content_generation import (
     router as content_generation_router,
 )
@@ -43,10 +46,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.FRONTEND_URL,
-    ],
-    allow_credentials=True,
+     allow_origins=[
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://10.10.35.5:3000",
+    settings.FRONTEND_URL,
+],allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -131,6 +136,10 @@ app.include_router(
     matchmaker_router,
     prefix="/api/v1",
 )
+app.include_router(
+    team_matchmaker_router,
+    prefix=settings.API_V1_PREFIX,
+)
 
 app.include_router(
     notification_router,
@@ -177,3 +186,4 @@ app.include_router(
 
 
 app.include_router(team_chat_router, prefix="/api/v1")
+app.include_router(team_matchmaker_router, prefix="/api/v1")

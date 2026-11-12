@@ -1,12 +1,7 @@
+
 from uuid import UUID
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    status,
-)
-
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -47,35 +42,23 @@ async def invite_member(
         invitee_id=data.user_id,
     )
 
-    if result == "TEAM_NOT_FOUND":
-        raise HTTPException(
-            status_code=404,
-            detail="Team not found",
-        )
+    error_map = {
+        "TEAM_NOT_FOUND": (404, "Team not found"),
+        "USER_NOT_FOUND": (404, "User not found"),
+        "INVITER_NOT_FOUND": (404, "Inviter not found"),
+        "NOT_TEAM_OWNER": (403, "Only the team owner can invite members"),
+        "CANNOT_INVITE_SELF": (400, "You cannot invite yourself"),
+        "ALREADY_MEMBER": (409, "User is already a team member"),
+        "TEAM_FULL": (409, "Team has reached its maximum members"),
+        "INVITATION_EXISTS": (409, "Invitation already exists"),
+    }
 
-    if result == "USER_NOT_FOUND":
-        raise HTTPException(
-            status_code=404,
-            detail="User not found",
-        )
+    if isinstance(result, str) and result in error_map:
+        code, message = error_map[result]
+        raise HTTPException(status_code=code, detail=message)
 
-    if result == "ALREADY_MEMBER":
-        raise HTTPException(
-            status_code=400,
-            detail="User is already a team member",
-        )
-
-    if result == "TEAM_FULL":
-        raise HTTPException(
-            status_code=400,
-            detail="Team has reached its maximum members",
-        )
-
-    if result == "INVITATION_EXISTS":
-        raise HTTPException(
-            status_code=400,
-            detail="Invitation already exists",
-        )
+    if isinstance(result, str):
+        raise HTTPException(status_code=400, detail=result)
 
     return result
 
@@ -110,17 +93,34 @@ async def accept_invitation(
         accept=True,
     )
 
-    if result == "NOT_FOUND":
+    error_map = {
+        "NOT_FOUND": (404, "Invitation not found"),
+        "ALREADY_RESPONDED": (409, "Invitation already responded to"),
+        "USER_NOT_FOUND": (404, "Active student account not found"),
+        "TEAM_NOT_FOUND": (404, "Team not found"),
+        "TEAM_FULL": (409, "Team has reached its maximum members"),
+        "ALREADY_MEMBER": (409, "You are already a member of this team"),
+        "ALREADY_REGISTERED": (
+            409,
+            "You are already registered for another team or individually",
+        ),
+    }
+
+    if isinstance(result, str) and result in error_map:
+        code, message = error_map[result]
+        raise HTTPException(status_code=code, detail=message)
+
+    if isinstance(result, dict) and "CONFLICT" in result:
         raise HTTPException(
-            status_code=404,
-            detail="Invitation not found",
+            status_code=409,
+            detail={
+                "message": "Hackathon schedule conflict",
+                **result["CONFLICT"],
+            },
         )
 
-    if result == "ALREADY_RESPONDED":
-        raise HTTPException(
-            status_code=400,
-            detail="Invitation already responded to",
-        )
+    if isinstance(result, str):
+        raise HTTPException(status_code=400, detail=result)
 
     return result
 
@@ -141,45 +141,18 @@ async def decline_invitation(
         accept=False,
     )
 
-    if result == "NOT_FOUND":
-        raise HTTPException(
-            status_code=404,
-            detail="Invitation not found",
-        )
+    error_map = {
+        "NOT_FOUND": (404, "Invitation not found"),
+        "ALREADY_RESPONDED": (409, "Invitation already responded to"),
+        "TEAM_NOT_FOUND": (404, "Team not found"),
+    }
 
-    if result == "ALREADY_RESPONDED":
-        raise HTTPException(
-            status_code=400,
-            detail="Invitation already responded to",
-        )
+    if isinstance(result, str) and result in error_map:
+        code, message = error_map[result]
+        raise HTTPException(status_code=code, detail=message)
 
-    if result == "TEAM_NOT_FOUND":
-        raise HTTPException(
-            status_code=404,
-            detail="Team not found",
-        )
-
-    if result == "TEAM_FULL":
-        raise HTTPException(
-            status_code=400,
-            detail="Team has reached its maximum members",
-        )
-
-    if result == "ALREADY_MEMBER":
-        raise HTTPException(
-            status_code=400,
-            detail="You are already a member of this team",
-        )
-
-    if isinstance(result, dict) and "CONFLICT" in result:
-        conflict = result["CONFLICT"]
-
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "message": "Hackathon schedule conflict",
-                **conflict,
-            },
-        ) 
+    if isinstance(result, str):
+        raise HTTPException(status_code=400, detail=result)
 
     return result
+

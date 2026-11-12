@@ -13,11 +13,22 @@ import {
 interface EditForm extends Partial<Hackathon> {
   start_time: string;
   end_time: string;
+
+  registration_start?: string | null;
+  registration_end?: string | null;
+  organizer_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 function getISTParts(value?: string | null) {
   if (!value) {
     return { date: "", time: "" };
+  }
+
+  // Date-only values must not be converted through UTC.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return { date: value, time: "" };
   }
 
   const date = new Date(value);
@@ -26,7 +37,6 @@ function getISTParts(value?: string | null) {
     return { date: "", time: "" };
   }
 
-  // Convert timestamp to IST for the date/time inputs.
   const ist = new Date(date.getTime() + 330 * 60 * 1000);
 
   return {
@@ -40,8 +50,10 @@ function toISTTimestamp(date: string, time: string) {
 }
 
 export default function EditHackathonPage() {
-  const { id } = useParams();
+  const params = useParams();
   const router = useRouter();
+
+  const id = params.id as string;
 
   const [form, setForm] = useState<EditForm>({
     start_time: "",
@@ -54,15 +66,19 @@ export default function EditHackathonPage() {
   useEffect(() => {
     async function load() {
       try {
-        const data = await getOrganizerHackathon(id as string);
+        const data = await getOrganizerHackathon(id);
 
         const start = getISTParts(data.hackathon_start);
         const end = getISTParts(data.hackathon_end);
 
         setForm({
           ...data,
-          start_date: start.date || data.start_date,
-          end_date: end.date || data.end_date,
+          registration_deadline:
+            data.registration_deadline?.slice(0, 10) ?? "",
+          start_date:
+            data.start_date || start.date,
+          end_date:
+            data.end_date || end.date,
           start_time: start.time,
           end_time: end.time,
         });
@@ -74,7 +90,9 @@ export default function EditHackathonPage() {
       }
     }
 
-    load();
+    if (id) {
+      load();
+    }
   }, [id]);
 
   function change(field: string, value: string | number) {
@@ -88,14 +106,30 @@ export default function EditHackathonPage() {
     e.preventDefault();
 
     if (
+      !form.registration_deadline ||
       !form.start_date ||
       !form.end_date ||
       !form.start_time ||
       !form.end_time
     ) {
-      alert("Please enter both hackathon dates and times.");
+      alert("Please enter all registration and hackathon dates and times.");
       return;
     }
+
+    if (form.registration_deadline >= form.start_date) {
+      alert("Registration deadline must be before the hackathon start date.");
+      return;
+    }
+
+    if (form.start_date > form.end_date) {
+      alert("Hackathon end date cannot be before its start date.");
+      return;
+    }
+
+    const registrationEnd = toISTTimestamp(
+      form.registration_deadline,
+      "23:59"
+    ).replace(":00+05:30", ":59+05:30");
 
     const hackathonStart = toISTTimestamp(
       form.start_date,
@@ -107,7 +141,18 @@ export default function EditHackathonPage() {
       form.end_time
     );
 
-    if (new Date(hackathonStart) >= new Date(hackathonEnd)) {
+    if (
+      new Date(registrationEnd).getTime() >=
+      new Date(hackathonStart).getTime()
+    ) {
+      alert("Registration must close before the hackathon starts.");
+      return;
+    }
+
+    if (
+      new Date(hackathonStart).getTime() >=
+      new Date(hackathonEnd).getTime()
+    ) {
       alert("Hackathon end must be after hackathon start.");
       return;
     }
@@ -120,12 +165,21 @@ export default function EditHackathonPage() {
         end_time,
         hackathon_start,
         hackathon_end,
+        registration_end,
+        registration_start,
         organizer,
+        id: ignoredId,
+        organizer_id,
+        status,
+        is_active,
+        created_at,
+        updated_at,
         ...otherFields
       } = form;
 
-      await updateOrganizerHackathon(id as string, {
+      await updateOrganizerHackathon(id, {
         ...otherFields,
+        registration_end: registrationEnd,
         hackathon_start: hackathonStart,
         hackathon_end: hackathonEnd,
       });
@@ -133,6 +187,7 @@ export default function EditHackathonPage() {
       alert("Hackathon updated successfully.");
 
       router.push(`/organizer/hackathons/${id}`);
+      router.refresh();
     } catch (error: any) {
       console.error("Update failed:", error);
 
@@ -242,6 +297,9 @@ export default function EditHackathonPage() {
               }
               className="mt-1 w-full rounded-xl border p-3"
             />
+            <p className="mt-1 text-xs text-gray-500">
+              Registration closes at 11:59 PM IST.
+            </p>
           </div>
 
           <div>
@@ -333,3 +391,4 @@ export default function EditHackathonPage() {
     </div>
   );
 }
+

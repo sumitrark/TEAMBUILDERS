@@ -1,7 +1,15 @@
+
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, Integer, DateTime, ForeignKey
+from sqlalchemy import (
+    String,
+    Text,
+    Integer,
+    DateTime,
+    ForeignKey,
+    JSON,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,11 +47,17 @@ class Team(Base):
         nullable=False,
     )
 
-    # Hackathon this team is participating in
     hackathon_id: Mapped[UUID | None] = mapped_column(
-    UUID(as_uuid=True),
-    ForeignKey("hackathons.id"),
-    nullable=True,
+        UUID(as_uuid=True),
+        ForeignKey("hackathons.id"),
+        nullable=True,
+    )
+
+    # Skills selected by the team owner from the shared catalogue.
+    required_skills: Mapped[list[str]] = mapped_column(
+        JSON,
+        default=list,
+        nullable=False,
     )
 
     created_at: Mapped[datetime] = mapped_column(

@@ -304,6 +304,7 @@ export async function createOrganizerHackathon(data: {
   hackathon_end: string;
   banner_image?: string;
   website?: string;
+  registration_end?: string;
 }) {
   const response = await api.post(
     "/hackathons/organizer/create",

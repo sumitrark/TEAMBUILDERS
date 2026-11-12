@@ -1,3 +1,4 @@
+
 from uuid import UUID
 
 from fastapi import (
@@ -6,7 +7,7 @@ from fastapi import (
     HTTPException,
     status,
 )
-
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -17,12 +18,11 @@ from app.crud.team_member import (
     add_team_member,
     remove_team_member,
 )
+from app.crud.team import get_team
 
-from app.crud.team import get_my_teams
+from app.models.team import Team
 
-from app.schemas.team_member import (
-    TeamMemberResponse,
-)
+from app.schemas.team_member import TeamMemberResponse
 
 
 router = APIRouter(
@@ -30,6 +30,11 @@ router = APIRouter(
     tags=["Team Members"],
 )
 
+
+# =========================================================
+# VIEW TEAM MEMBERS
+# Owner and accepted members can view the roster.
+# =========================================================
 
 @router.get(
     "/{team_id}",
@@ -40,25 +45,16 @@ async def team_members(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # Only team owner can view/manage the team
-    teams = await get_my_teams(
+    team = await get_team(
         db,
+        team_id,
         current_user.id,
-    )
-
-    team = next(
-        (
-            team
-            for team in teams
-            if team.id == team_id
-        ),
-        None,
     )
 
     if team is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not the owner of this team",
+            detail="You are not a member of this team",
         )
 
     return await get_team_members(
@@ -66,6 +62,11 @@ async def team_members(
         team_id,
     )
 
+
+# =========================================================
+# ADD MEMBER
+# Owner only.
+# =========================================================
 
 @router.post(
     "/{team_id}/{user_id}",
@@ -77,25 +78,19 @@ async def add_member(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # Verify ownership
-    teams = await get_my_teams(
-        db,
-        current_user.id,
+    result = await db.execute(
+        select(Team).where(
+            Team.id == team_id,
+            Team.owner_id == current_user.id,
+        )
     )
 
-    team = next(
-        (
-            team
-            for team in teams
-            if team.id == team_id
-        ),
-        None,
-    )
+    team = result.scalar_one_or_none()
 
     if team is None:
         raise HTTPException(
-            status_code=403,
-            detail="You are not the owner of this team",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the team owner can add members",
         )
 
     result = await add_team_member(
@@ -106,24 +101,29 @@ async def add_member(
 
     if result == "TEAM_NOT_FOUND":
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Team not found",
         )
 
     if result == "ALREADY_MEMBER":
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_409_CONFLICT,
             detail="User is already a team member",
         )
 
     if result == "TEAM_FULL":
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Team has reached its maximum members",
         )
 
     return result
 
+
+# =========================================================
+# REMOVE MEMBER
+# Owner only.
+# =========================================================
 
 @router.delete(
     "/{team_id}/{user_id}",
@@ -134,24 +134,19 @@ async def remove_member(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    teams = await get_my_teams(
-        db,
-        current_user.id,
+    result = await db.execute(
+        select(Team).where(
+            Team.id == team_id,
+            Team.owner_id == current_user.id,
+        )
     )
 
-    team = next(
-        (
-            team
-            for team in teams
-            if team.id == team_id
-        ),
-        None,
-    )
+    team = result.scalar_one_or_none()
 
     if team is None:
         raise HTTPException(
-            status_code=403,
-            detail="You are not the owner of this team",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the team owner can remove members",
         )
 
     removed = await remove_team_member(
@@ -162,10 +157,10 @@ async def remove_member(
 
     if not removed:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Team member not found",
         )
 
     return {
-        "message": "Team member removed successfully"
+        "message": "Team member removed successfully",
     }

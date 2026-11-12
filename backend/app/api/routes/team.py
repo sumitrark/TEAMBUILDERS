@@ -1,11 +1,12 @@
-from uuid import UUID
 
+from uuid import UUID
+from app.services.team_matching import check_team_schedule_conflicts
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.dependencies.current_user import get_current_user
-
+from app.services.team_matching import check_team_schedule_conflicts
 from app.schemas.team import (
     TeamCreate,
     TeamResponse,
@@ -90,6 +91,10 @@ async def register_team(
         hackathon_id=hackathon_id,
     )
 
+    # -----------------------------------------------------
+    # NOT FOUND
+    # -----------------------------------------------------
+
     if result == "TEAM_NOT_FOUND":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -102,16 +107,48 @@ async def register_team(
             detail="Hackathon not found",
         )
 
+    # -----------------------------------------------------
+    # DUPLICATE REGISTRATION
+    # -----------------------------------------------------
+
     if result == "ALREADY_REGISTERED":
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Team is already registered for this hackathon",
         )
+
+    if result == "MEMBER_ALREADY_REGISTERED_INDIVIDUALLY":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "A team member is already registered individually "
+                "for this hackathon"
+            ),
+        )
+
+    if result == "MEMBER_ALREADY_REGISTERED_WITH_ANOTHER_TEAM":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "A team member is already registered with another team "
+                "for this hackathon"
+            ),
+        )
+
+    # -----------------------------------------------------
+    # HACKATHON AVAILABILITY
+    # -----------------------------------------------------
 
     if result == "HACKATHON_INACTIVE":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Hackathon is inactive",
+        )
+
+    if result == "REGISTRATION_NOT_OPEN":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Hackathon registration has not opened yet",
         )
 
     if result == "REGISTRATION_CLOSED":
@@ -120,30 +157,51 @@ async def register_team(
             detail="Hackathon registration is closed",
         )
 
-    if result == "REGISTRATION_DEADLINE_PASSED":
+    if result == "HACKATHON_ALREADY_STARTED":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Hackathon registration deadline has passed",
+            detail="Hackathon has already started",
         )
+
+    # -----------------------------------------------------
+    # TEAM SIZE
+    # -----------------------------------------------------
 
     if result == "TEAM_SIZE_EXCEEDED":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "Team exceeds the maximum allowed "
-                "members for this hackathon"
+                "Team exceeds the maximum allowed member count"
             ),
         )
+
+    # -----------------------------------------------------
+    # SCHEDULE CONFLICT
+    # -----------------------------------------------------
 
     if result == "MEMBER_SCHEDULE_CONFLICT":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "One or more team members are already "
-                "participating in another hackathon "
-                "during this hackathon's schedule"
+                "One or more team members are already participating "
+                "in another hackathon during this schedule"
             ),
         )
+
+    if result == "TEAM_PARTICIPATION_NOT_ALLOWED":
+      raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="This hackathon does not allow team participation",
+    )
+
+    if result == "TEAM_ALREADY_ASSIGNED_TO_ANOTHER_HACKATHON":
+       raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="This team is already assigned to another hackathon",
+    )
+    # -----------------------------------------------------
+    # SUCCESS
+    # -----------------------------------------------------
 
     return result
 
@@ -162,10 +220,10 @@ async def get_single_team(
     current_user=Depends(get_current_user),
 ):
     team = await get_team(
-    db,
-    team_id,
-    current_user.id,
-)
+        db,
+        team_id,
+        current_user.id,
+    )
 
     if team is None:
         raise HTTPException(
@@ -174,6 +232,53 @@ async def get_single_team(
         )
 
     return team
+
+
+
+
+# =========================================================
+# TEAM SCHEDULE CHECK
+# =========================================================
+
+@router.get("/{team_id}/schedule-check/{hackathon_id}")
+async def team_schedule_check(
+    team_id: UUID,
+    hackathon_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # Only the owner and accepted members can view the report.
+    team = await get_team(
+        db,
+        team_id,
+        current_user.id,
+    )
+
+    if team is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Team not found or access denied",
+        )
+
+    report = await check_team_schedule_conflicts(
+        db=db,
+        team_id=team_id,
+        hackathon_id=hackathon_id,
+    )
+
+    if report.get("error") == "TEAM_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Team not found",
+        )
+
+    if report.get("error") == "HACKATHON_NOT_FOUND":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hackathon not found",
+        )
+
+    return report
 
 
 # =========================================================
@@ -213,21 +318,43 @@ async def edit_team(
 @router.delete(
     "/{team_id}",
 )
+
 async def remove_team(
     team_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    deleted = await delete_team(
+    result = await delete_team(
         db,
         team_id,
         current_user.id,
     )
 
-    if not deleted:
+    if result == "TEAM_NOT_FOUND":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Team not found or you are not the owner",
+            detail="Team not found",
+        )
+
+    if result == "NOT_TEAM_OWNER":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the team owner can delete this team",
+        )
+
+    if result == "TEAM_REGISTERED":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This team cannot be deleted because it is assigned "
+                "to a hackathon or has participant records"
+            ),
+        )
+
+    if result != "SUCCESS":
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to delete team",
         )
 
     return {

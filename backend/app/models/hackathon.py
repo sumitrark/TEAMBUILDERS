@@ -1,3 +1,4 @@
+
 from sqlalchemy import (
     String,
     Text,
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime, date, timezone
 import uuid
 import secrets
+
 from app.db.base import Base
 
 
@@ -32,7 +34,6 @@ class Hackathon(Base):
         index=True,
     )
 
-    # Kept for compatibility with existing participant UI
     organizer: Mapped[str] = mapped_column(
         String(200)
     )
@@ -53,6 +54,13 @@ class Hackathon(Base):
         String(50)
     )
 
+    participation_mode: Mapped[str] = mapped_column(
+    String(20),
+    nullable=False,
+    default="both",
+    server_default="both",
+    )
+
     location: Mapped[str] = mapped_column(
         String(200)
     )
@@ -69,44 +77,27 @@ class Hackathon(Base):
         String(100)
     )
 
-    
     # =====================================================
-    # DATES
+    # CANONICAL DATE-ONLY FIELDS
     # =====================================================
 
-    registration_start: Mapped[datetime | None] = mapped_column(
-    DateTime(timezone=True),
-    nullable=True,
+    start_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
     )
 
-    registration_end: Mapped[datetime | None] = mapped_column(
-    DateTime(timezone=True),
-    nullable=True,
+    end_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
     )
 
-    hackathon_start: Mapped[datetime | None] = mapped_column(
-    DateTime(timezone=True),
-    nullable=True,
-   )
-
-    hackathon_end: Mapped[datetime | None] = mapped_column(
-    DateTime(timezone=True),
-    nullable=True,
-   )
-
-    
-
+    registration_deadline: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
 
     # =====================================================
-    # PRECISE LIFECYCLE TIMESTAMPS
-    #
-    # Additive, alongside the legacy date-only columns above rather
-    # than replacing them - existing schemas/CRUD/frontend forms
-    # still read those directly, and a full rename is a separate,
-    # larger cleanup. Nullable for backward compatibility with any
-    # write path that hasn't been updated to populate them yet;
-    # lifecycle status calculation falls back to the legacy date
-    # fields when these are unset (see services/hackathon_lifecycle.py).
+    # LIFECYCLE TIMESTAMPS
     # =====================================================
 
     registration_start: Mapped[datetime | None] = mapped_column(
@@ -128,6 +119,7 @@ class Hackathon(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
     results_announcement_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -164,12 +156,14 @@ class Hackathon(Base):
     # =====================================================
     # TIMESTAMPS
     # =====================================================
+
     judge_invitation_code: Mapped[str] = mapped_column(
-    String(100),
-    unique=True,
-    nullable=False,
-    default=lambda: secrets.token_urlsafe(24),
+        String(100),
+        unique=True,
+        nullable=False,
+        default=lambda: secrets.token_urlsafe(24),
     )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

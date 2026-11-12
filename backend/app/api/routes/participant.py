@@ -38,21 +38,30 @@ async def join(
         hackathon_id=hackathon_id,
     )
 
-    # Hackathon not found
     if participant == "HACKATHON_NOT_FOUND":
         raise HTTPException(
             status_code=404,
             detail="Hackathon not found",
         )
 
-    # Already registered
-    if participant == "ALREADY_JOINED":
+    if participant == "INDIVIDUAL_PARTICIPATION_NOT_ALLOWED":
         raise HTTPException(
-            status_code=400,
-            detail="Already registered for this hackathon",
+            status_code=403,
+            detail="This hackathon only allows team participation.",
         )
 
-    # Registration window enforcement
+    if participant == "ALREADY_REGISTERED_WITH_TEAM":
+        raise HTTPException(
+            status_code=409,
+            detail="You are already registered as a member of a team for this hackathon.",
+        )
+
+    if participant == "ALREADY_JOINED":
+        raise HTTPException(
+            status_code=409,
+            detail="Already registered for this hackathon.",
+        )
+
     if participant == "REGISTRATION_NOT_OPEN":
         raise HTTPException(
             status_code=400,
@@ -71,13 +80,10 @@ async def join(
             detail="This hackathon has already started.",
         )
 
-    # Schedule conflict
     if isinstance(participant, dict) and "CONFLICT" in participant:
-        conflict = participant["CONFLICT"]
-
         raise HTTPException(
             status_code=409,
-            detail=conflict,
+            detail=participant["CONFLICT"],
         )
 
     return participant
@@ -100,7 +106,6 @@ async def results(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # Only registered participants can view hackathon results.
     participant = await get_participant(
         db=db,
         user_id=current_user.id,
@@ -113,7 +118,6 @@ async def results(
             detail="You must be registered for this hackathon to view its results.",
         )
 
-    # The results CRUD checks whether results have been published.
     result = await get_published_results(
         db=db,
         hackathon_id=hackathon_id,

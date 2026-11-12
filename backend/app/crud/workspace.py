@@ -76,14 +76,16 @@ async def get_workspace(
         return "NOT_REGISTERED"
 
     
+    
     # --------------------------------------------------------
-    # RESOLVE OR CREATE THE PARTICIPANT'S TEAM
+    # RESOLVE THE PARTICIPANT'S REGISTERED TEAM
     # --------------------------------------------------------
 
     team = None
 
-    # First check the participant's registered team.
-    if participant.team_id:
+    if participant.team_id is not None:
+        # A participant with a team_id must belong to a team
+        # registered for this hackathon.
         team_result = await db.execute(
             select(Team).where(
                 Team.id == participant.team_id,
@@ -92,136 +94,86 @@ async def get_workspace(
         )
         team = team_result.scalar_one_or_none()
 
-    # Check TeamMember records.
-    if team is None:
-        team_member_result = await db.execute(
-            select(TeamMember, Team)
-            .join(Team, TeamMember.team_id == Team.id)
-            .where(
-                TeamMember.user_id == user_id,
-                Team.hackathon_id == hackathon_id,
-            )
-        )
+        if team is None:
+            return "TEAM_REGISTRATION_NOT_FOUND"
 
-        row = team_member_result.first()
-        team = row[1] if row else None
-
-    # Check teams owned by the participant.
-    if team is None:
-        owned_result = await db.execute(
-            select(Team).where(
-                Team.hackathon_id == hackathon_id,
-                Team.owner_id == user_id,
-            )
-        )
-        team = owned_result.scalar_one_or_none()
-
-    # --------------------------------------------------------
-    # FIND EXISTING SOLO PROJECT
-    # --------------------------------------------------------
-
-    solo_project = None
-
-    if team is None:
-        solo_result = await db.execute(
-            select(Project)
-            .where(
-                Project.owner_id == user_id,
-                Project.team_id.is_(None),
-            )
-            .order_by(Project.created_at.desc())
-        )
-
-        solo_project = solo_result.scalars().first()
-
-        # Create a one-person team for this participant.
-        user_result = await db.execute(
-            select(User).where(User.id == user_id)
-        )
-        user = user_result.scalar_one_or_none()
-
-        display_name = (
-            user.full_name if user and user.full_name
-            else user.email if user
-            else "Participant"
-        )
-
-        team = Team(
-            name=f"{display_name[:80]}'s Solo Team",
-            description="Individual hackathon participation",
-            max_members=1,
-            owner_id=user_id,
-            hackathon_id=hackathon_id,
-        )
-
-        db.add(team)
-        await db.flush()
-
-        # Add the participant as a team member.
-        db.add(
-            TeamMember(
-                team_id=team.id,
-                user_id=user_id,
-                role="owner",
-            )
-        )
-
-        # Register the team for this hackathon.
-        db.add(
-            TeamHackathon(
-                team_id=team.id,
-                hackathon_id=hackathon_id,
-                status="registered",
-            )
-        )
-
-        # Connect the participant to the team.
-        participant.team_id = team.id
-
-        # Preserve the existing project.
-        if solo_project is not None:
-            solo_project.team_id = team.id
-
-        await db.commit()
-        await db.refresh(team)
-
-    else:
-        # Ensure existing team registration is connected.
-        participant.team_id = team.id
-
-        membership_result = await db.execute(
-            select(TeamMember).where(
-                TeamMember.team_id == team.id,
-                TeamMember.user_id == user_id,
-            )
-        )
-
-        if membership_result.scalar_one_or_none() is None:
-            db.add(
-                TeamMember(
-                    team_id=team.id,
-                    user_id=user_id,
-                    role="owner" if team.owner_id == user_id else "member",
-                )
-            )
-
+        # Confirm that the team registration exists.
         registration_result = await db.execute(
-            select(TeamHackathon).where(
+            select(TeamHackathon.id).where(
                 TeamHackathon.team_id == team.id,
                 TeamHackathon.hackathon_id == hackathon_id,
             )
         )
 
         if registration_result.scalar_one_or_none() is None:
-            db.add(
-                TeamHackathon(
-                    team_id=team.id,
-                    hackathon_id=hackathon_id,
-                    status="registered",
+            return "TEAM_REGISTRATION_NOT_FOUND"
+
+        # Confirm the participant is actually the owner or a member.
+        is_owner = team.owner_id == user_id
+
+        membership_result = await db.execute(
+            select(TeamMember.id).where(
+                TeamMember.team_id == team.id,
+                TeamMember.user_id == user_id,
+            )
+        )
+        is_member = membership_result.scalar_one_or_none() is not None
+
+        if not is_owner and not is_member:
+            return "NOT_REGISTERED"
+
+    else:
+        # Support existing registered team memberships where the
+        # participant's team_id has not been populated.
+        membership_result = await db.execute(
+            select(Team)
+            .join(TeamMember, TeamMember.team_id == Team.id)
+            .join(
+                TeamHackathon,
+                TeamHackathon.team_id == Team.id,
+            )
+            .where(
+                TeamMember.user_id == user_id,
+                Team.hackathon_id == hackathon_id,
+                TeamHackathon.hackathon_id == hackathon_id,
+            )
+        )
+
+        member_teams = membership_result.scalars().all()
+
+        if len(member_teams) > 1:
+            return "MULTIPLE_TEAM_REGISTRATIONS"
+
+        if member_teams:
+            team = member_teams[0]
+
+        else:
+            # Check whether the participant owns a registered team.
+            owned_result = await db.execute(
+                select(Team)
+                .join(
+                    TeamHackathon,
+                    TeamHackathon.team_id == Team.id,
+                )
+                .where(
+                    Team.owner_id == user_id,
+                    Team.hackathon_id == hackathon_id,
+                    TeamHackathon.hackathon_id == hackathon_id,
                 )
             )
 
-        await db.commit()
+            owned_teams = owned_result.scalars().all()
+
+            if len(owned_teams) > 1:
+                return "MULTIPLE_TEAM_REGISTRATIONS"
+
+            if owned_teams:
+                team = owned_teams[0]
+
+    # IMPORTANT:
+    # If team is None, this is an individual participant.
+    # Do not create a Team, TeamMember, or TeamHackathon record.
+
 
     # --------------------------------------------------------
     # FIND PROJECT
@@ -278,31 +230,38 @@ async def get_workspace(
 
         submission_count = len(submissions)
 
+    
     # --------------------------------------------------------
-    # TEAM MEMBERS
+    # TEAM MEMBERS (INCLUDE OWNER)
     # --------------------------------------------------------
 
     team_members = []
 
     if team is not None:
-        members_result = await db.execute(
-            select(TeamMember, User, Participant)
-            .join(
-                User,
-                TeamMember.user_id == User.id,
+        # Start with the owner, even if there is no TeamMember row.
+        member_user_ids = {team.owner_id}
+
+        membership_result = await db.execute(
+            select(TeamMember.user_id).where(
+                TeamMember.team_id == team.id
             )
+        )
+
+        member_user_ids.update(
+            membership_result.scalars().all()
+        )
+
+        # Only show users who are registered participants
+        # in this hackathon.
+        members_result = await db.execute(
+            select(User, Participant)
             .join(
                 Participant,
-                (
-                    (Participant.user_id == User.id)
-                    & (
-                        Participant.hackathon_id
-                        == hackathon_id
-                    )
-                ),
+                Participant.user_id == User.id,
             )
             .where(
-                TeamMember.team_id == team.id,
+                User.id.in_(member_user_ids),
+                Participant.hackathon_id == hackathon_id,
             )
             .order_by(
                 User.full_name.asc(),
@@ -310,7 +269,7 @@ async def get_workspace(
             )
         )
 
-        for member, user, member_participant in members_result.all():
+        for user, member_participant in members_result.all():
             team_members.append(
                 {
                     "user_id": user.id,

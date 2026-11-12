@@ -40,21 +40,77 @@ export default function CreateHackathonPage() {
     e.preventDefault();
 
     if (
+      !form.title.trim() ||
+      !form.description.trim() ||
+      !form.location.trim() ||
+      !form.prize_pool.trim()
+    ) {
+      alert("Please complete all required fields.");
+      return;
+    }
+
+    if (
+      !form.registration_deadline ||
       !form.start_date ||
       !form.start_time ||
       !form.end_date ||
       !form.end_time
     ) {
-      alert("Please enter the hackathon start and end dates and times.");
+      alert("Please enter all registration and hackathon dates and times.");
       return;
     }
 
-    // Interpret the entered times as Indian Standard Time (UTC +05:30).
-    const hackathonStart = `${form.start_date}T${form.start_time}:00+05:30`;
-    const hackathonEnd = `${form.end_date}T${form.end_time}:00+05:30`;
+    if (
+      form.registration_deadline >= form.start_date
+    ) {
+      alert(
+        "Registration deadline must be before the hackathon start date."
+      );
+      return;
+    }
 
-    if (new Date(hackathonStart) >= new Date(hackathonEnd)) {
-      alert("Hackathon end date and time must be after the start date and time.");
+    if (form.start_date > form.end_date) {
+      alert("Hackathon end date cannot be before its start date.");
+      return;
+    }
+
+    if (
+      !Number.isInteger(Number(form.team_size)) ||
+      Number(form.team_size) < 2 ||
+      Number(form.team_size) > 20
+    ) {
+      alert("Team size must be between 2 and 20.");
+      return;
+    }
+
+    // Interpret organizer-entered times as Indian Standard Time (UTC +05:30).
+    const hackathonStart =
+      `${form.start_date}T${form.start_time}:00+05:30`;
+
+    const hackathonEnd =
+      `${form.end_date}T${form.end_time}:00+05:30`;
+
+    // Registration remains open until the end of the selected deadline date.
+    const registrationEnd =
+      `${form.registration_deadline}T23:59:59+05:30`;
+
+    if (
+      new Date(registrationEnd).getTime() >=
+      new Date(hackathonStart).getTime()
+    ) {
+      alert(
+        "Registration deadline must be before the hackathon starts."
+      );
+      return;
+    }
+
+    if (
+      new Date(hackathonStart).getTime() >=
+      new Date(hackathonEnd).getTime()
+    ) {
+      alert(
+        "Hackathon end date and time must be after the start date and time."
+      );
       return;
     }
 
@@ -70,18 +126,21 @@ export default function CreateHackathonPage() {
       await createOrganizerHackathon({
         ...hackathonData,
         team_size: Number(form.team_size),
+        registration_end: registrationEnd,
         hackathon_start: hackathonStart,
         hackathon_end: hackathonEnd,
       });
 
       alert("Hackathon created successfully!");
+
       router.push("/organizer/hackathons");
+      router.refresh();
     } catch (error: any) {
       console.error("Failed to create hackathon:", error);
 
       alert(
         error?.response?.data?.detail ??
-          "Failed to create hackathon"
+          "Failed to create hackathon. Please try again."
       );
     } finally {
       setLoading(false);
@@ -90,6 +149,7 @@ export default function CreateHackathonPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Header */}
       <div className="border-b bg-white px-8 py-5">
         <button
           type="button"
@@ -123,9 +183,13 @@ export default function CreateHackathonPage() {
             <div className="grid gap-5">
               <input
                 value={form.title}
-                onChange={(e) => updateField("title", e.target.value)}
+                onChange={(e) =>
+                  updateField("title", e.target.value)
+                }
                 placeholder="Hackathon title"
                 required
+                minLength={3}
+                maxLength={200}
                 className="rounded-xl border p-3 outline-none focus:ring-2 focus:ring-violet-500"
               />
 
@@ -136,6 +200,7 @@ export default function CreateHackathonPage() {
                 }
                 placeholder="Describe your hackathon..."
                 required
+                minLength={10}
                 rows={5}
                 className="rounded-xl border p-3 outline-none focus:ring-2 focus:ring-violet-500"
               />
@@ -143,7 +208,9 @@ export default function CreateHackathonPage() {
               <div className="grid gap-5 md:grid-cols-2">
                 <select
                   value={form.mode}
-                  onChange={(e) => updateField("mode", e.target.value)}
+                  onChange={(e) =>
+                    updateField("mode", e.target.value)
+                  }
                   className="rounded-xl border p-3"
                 >
                   <option>Online</option>
@@ -180,10 +247,15 @@ export default function CreateHackathonPage() {
                   type="number"
                   min={2}
                   max={20}
+                  step={1}
                   value={form.team_size}
                   onChange={(e) =>
-                    updateField("team_size", Number(e.target.value))
+                    updateField(
+                      "team_size",
+                      Number(e.target.value)
+                    )
                   }
+                  required
                   className="w-full rounded-xl border p-3"
                 />
               </div>
@@ -241,11 +313,18 @@ export default function CreateHackathonPage() {
                   type="date"
                   value={form.registration_deadline}
                   onChange={(e) =>
-                    updateField("registration_deadline", e.target.value)
+                    updateField(
+                      "registration_deadline",
+                      e.target.value
+                    )
                   }
                   required
                   className="w-full rounded-xl border p-3"
                 />
+
+                <p className="mt-1 text-xs text-gray-500">
+                  Registration closes at 11:59 PM IST on this date.
+                </p>
               </div>
 
               <div>
@@ -350,7 +429,9 @@ export default function CreateHackathonPage() {
           <div className="flex justify-end gap-3">
             <button
               type="button"
-              onClick={() => router.push("/organizer/hackathons")}
+              onClick={() =>
+                router.push("/organizer/hackathons")
+              }
               className="rounded-xl border px-6 py-3 font-semibold text-gray-700"
             >
               Cancel

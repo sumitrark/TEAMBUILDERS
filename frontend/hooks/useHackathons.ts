@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getHackathons } from "@/services/hackathon";
+import { getHackathons, Hackathon } from "@/services/hackathon";
 
 export function useHackathons() {
-  const [hackathons, setHackathons] = useState([]);
+  const [hackathons, setHackathons] = useState<Hackathon[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
