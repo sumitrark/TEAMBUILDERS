@@ -1,12 +1,17 @@
+
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1")
+    ? "http://localhost:8000/api/v1"
+    : "https://teambuilders-6mn0.onrender.com/api/v1");
+
 export const api = axios.create({
-   baseURL:
-  typeof window !== "undefined" &&
-  window.location.hostname !== "localhost" &&
-  window.location.hostname !== "127.0.0.1"
-    ? `http://${window.location.hostname}:8000/api/v1`
-    : "http://localhost:8000/api/v1", headers: {
+  baseURL: API_BASE_URL,
+  headers: {
     "Content-Type": "application/json",
   },
 });
@@ -80,7 +85,9 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config as RetryableRequestConfig | undefined;
+    const originalRequest = error.config as
+      | RetryableRequestConfig
+      | undefined;
 
     const url = originalRequest?.url ?? "";
 
