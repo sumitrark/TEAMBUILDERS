@@ -1,3 +1,4 @@
+
 import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -8,9 +9,11 @@ from passlib.context import CryptContext
 from app.core.config import settings
 
 
+# Argon2 is used for new passwords.
+# bcrypt remains available to verify passwords hashed by older versions.
 pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
+    schemes=["argon2", "bcrypt"],
+    deprecated="bcrypt",
 )
 
 
@@ -28,9 +31,7 @@ def verify_password(
     )
 
 
-def create_access_token(
-    subject: str,
-) -> str:
+def create_access_token(subject: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
@@ -55,11 +56,6 @@ def _refresh_secret() -> str:
 def create_refresh_token(
     subject: str,
 ) -> tuple[str, datetime]:
-    """
-    Returns (token, expires_at). The expiry is handed back so the caller
-    can persist the exact same value in the refresh_tokens table instead
-    of recomputing it and risking drift from what's actually in the JWT.
-    """
     expire = datetime.now(timezone.utc) + timedelta(
         days=settings.REFRESH_TOKEN_EXPIRE_DAYS
     )
@@ -67,8 +63,6 @@ def create_refresh_token(
     payload = {
         "sub": subject,
         "type": "refresh",
-        # Unique per issuance so two refresh tokens for the same user
-        # never hash-collide even if minted in the same second.
         "jti": uuid.uuid4().hex,
         "exp": expire,
     }
